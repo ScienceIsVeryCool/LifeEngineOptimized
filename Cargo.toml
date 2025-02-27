@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    # "simulation",
+    "renderer-wasm",
+    # "renderer-native"
+]

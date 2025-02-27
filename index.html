@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Wasm Grid Example</title>
+  <style>
+    /* Optional: ensure the canvas is visible */
+    canvas {
+      border: 1px solid black;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script type="module">
+    import init, { Grid } from './out/renderer_wasm.js';
+
+    async function run() {
+      // Initialize the wasm module
+      await init();
+
+      // Create a grid of 100x100 pixels
+      const grid = new Grid(100, 100, "canvas");
+      
+      // Manipulate some pixels – here we set one pixel to red
+      grid.set_pixel(10, 10, 0xFF0000); // Red color
+      
+      // Render the grid with each pixel drawn as a 5x5 block
+      grid.render(5);
+    }
+    
+    run();
+  </script>
+</body>
+</html>
