@@ -1,10 +1,9 @@
 [package]
 name = "renderer-native"
 version = "0.1.0"
-edition = "2024"
+edition = "2021" # Use 2021 edition for consistency
 
 [dependencies]
-winit = "0.30.9"
-pixels = "0.15"
+winit = "0.30.9" # Using an older but compatible version
+pixels = "0.15.0" # Using an older but compatible version
 simulation = { path = "../simulation" }
-

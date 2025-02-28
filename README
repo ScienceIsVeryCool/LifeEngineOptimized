@@ -1,0 +1,137 @@
+docker-compose up -d
+
+docker-compose exec -u 0 rust-dev /bin/bash
+
+
+
+Project Setup & Build Notes for Rust Wasm
+Ensure Rust is Up-to-Date & Install WASM Target
+Make sure you have a recent Rust toolchain, then add the WebAssembly target:
+
+rustup target add wasm32-unknown-unknown
+
+
+Clean the Build Artifacts (if needed)
+This ensures you start fresh:
+
+cargo clean
+
+
+Build Your Project for Wasm
+Build your project in release mode for the wasm32-unknown-unknown target:
+
+cargo build --target wasm32-unknown-unknown --release
+
+
+Generate JavaScript Bindings with wasm-bindgen
+Run wasm-bindgen to process the generated .wasm file. Adjust the file names as needed:
+
+wasm-bindgen --target web --out-dir ./out target/wasm32-unknown-unknown/release/renderer_wasm.wasm
+
+
+Note: This command creates JavaScript glue files (e.g., renderer_wasm.js and renderer_wasm_bg.wasm) in your ./out directory.
+(Optional) Use wasm-pack Instead
+To automate the cleaning, building, and binding steps, you can use wasm-pack:
+
+wasm-pack build --target web
+This will produce a pkg directory with your package files.
+
+Serving Your Files Locally
+To test your project in the browser, run a local HTTP server (so you avoid file: protocol issues). For example, if you have Python installed:
+
+python3 -m http.server 8080
+
+
+# Life Engine Implementation Details
+
+This document describes the implementation of the Life Engine simulation in Rust, compiled to WebAssembly for browser use.
+
+## Project Structure
+
+- `simulation/`: Core simulation logic, independent of any rendering
+  - `lib.rs`: Defines the Grid, CellState, and other core types
+  - `organism.rs`: Organism implementation with cell composition and behaviors
+  
+- `renderer-wasm/`: WebAssembly interface for browser rendering
+  - `lib.rs`: WASM bindings to expose functionality to JavaScript
+  - `utils.rs`: Utility functions for WASM, including panic handling
+  
+- `renderer-native/`: Native renderer for desktop use (optional)
+  - `main.rs`: Entry point for native app using pixels for rendering
+  
+- `index.html`: Browser interface with simulation controls
+
+## Key Components
+
+### Cell States
+
+We implement various cell types, each with different behaviors:
+
+- `Empty`: Basic empty cell
+- `Food`: Provides nourishment for organisms
+- `Wall`: Blocks organism movement
+- `Mouth`: Eats food in adjacent cells
+- `Producer`: Generates food in adjacent cells
+- `Mover`: Allows organisms to move
+- `Killer`: Damages other organisms
+- `Armor`: Protects against killer cells
+- `Eye`: Allows organisms to see and react to environment
+
+### Organisms
+
+Organisms are collections of cells with specific behaviors:
+
+- They consume food for energy
+- They reproduce when they've collected enough food
+- They can mutate, changing their structure
+- They die after a certain lifespan or when damaged
+
+### Grid
+
+The grid manages the environment:
+
+- Tracks all cell states and organism positions
+- Handles organism interactions and updates
+- Produces food randomly in empty cells
+- Updates the visual representation (pixels)
+
+### Evolution Mechanisms
+
+Several mechanisms drive evolution:
+
+- **Mutation**: When organisms reproduce, they may gain, lose, or change cells
+- **Selection**: Organisms better at collecting food reproduce more often
+- **Competition**: Resources are limited, leading to survival pressure
+- **Specialization**: Different cell compositions enable different survival strategies
+
+## WebAssembly Integration
+
+The project uses WebAssembly to run the simulation in the browser:
+
+1. Core simulation logic is implemented in Rust
+2. WASM bindings expose this logic to JavaScript
+3. JavaScript handles user interface and animation timing
+4. The canvas element visualizes the simulation
+
+## Optimization Considerations
+
+For performance, we've made several optimizations:
+
+- Using direct pixel manipulation rather than drawing shapes
+- Efficient data structures for organism tracking
+- Batching operations to minimize grid traversals
+- Avoiding excessive allocations during updates
+
+## Future Enhancements
+
+Several improvements could be made:
+
+- Species tracking and genealogy
+- More sophisticated organism behaviors
+- Multi-threading support for larger simulations
+- Enhanced visualization with support for zooming and panning
+- Saving and loading simulation states
+
+## Building and Running
+
+See the `troubleshooting.md` file for details on building and running the simulation.

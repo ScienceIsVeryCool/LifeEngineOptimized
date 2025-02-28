@@ -1,17 +1,25 @@
 [package]
 name = "renderer-wasm"
 version = "0.1.0"
-edition = "2024"
+edition = "2021" # Using 2021 for better WASM support
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-wasm-bindgen = "0.2.1"
+wasm-bindgen = "=0.2.84" # Pin to specific version
 simulation = { path = "../simulation" }
-web-sys = { version = "0.3", features = [
+web-sys = { version = "=0.3.61", features = [
   "Window",
-  "Document",
+  "Document", 
   "HtmlCanvasElement",
-  "CanvasRenderingContext2d"
+  "CanvasRenderingContext2d",
+  "console"
 ] }
+js-sys = "=0.3.61"
+rand = "=0.8.5"
+# Explicitly pin getrandom to a version known to work with wasm
+getrandom = { version = "=0.2.8", features = ["js"] }
+
+# Use console error panic hook for better error messages
+console_error_panic_hook = "0.1.7"

@@ -1,11 +1,20 @@
-// wasm-renderer/src/lib.rs
-
-use std::cell::RefCell;
-use std::rc::Rc;
+// renderer-wasm/src/lib.rs
+// At the top of renderer-wasm/src/lib.rs
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
-use simulation::Grid as CoreGrid; // Import your core Grid type
+use simulation::{Grid as CoreGrid, CellState, Organism};
+
+mod utils;
+
+// Called when the wasm module is instantiated
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> {
+    utils::set_panic_hook();
+    Ok(())
+}
+// use std::cell::RefCell;
+// use std::rc::Rc;
 
 #[wasm_bindgen]
 pub struct WasmGrid {
@@ -15,7 +24,6 @@ pub struct WasmGrid {
 #[wasm_bindgen]
 impl WasmGrid {
     /// Creates a new WasmGrid with the given dimensions.
-    /// Note that this does NOT handle any canvas rendering.
     #[wasm_bindgen(constructor)]
     pub fn new(width: u32, height: u32) -> WasmGrid {
         WasmGrid {
@@ -26,6 +34,23 @@ impl WasmGrid {
     /// Sets a pixel in the grid.
     pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) {
         self.inner.set_pixel(x, y, color);
+    }
+
+    /// Sets a cell with a specific state
+    pub fn set_cell(&mut self, x: u32, y: u32, state_idx: u8) {
+        let state = match state_idx {
+            0 => CellState::Empty,
+            1 => CellState::Food,
+            2 => CellState::Wall,
+            3 => CellState::Mouth,
+            4 => CellState::Producer,
+            5 => CellState::Mover,
+            6 => CellState::Killer,
+            7 => CellState::Armor,
+            8 => CellState::Eye,
+            _ => CellState::Empty,
+        };
+        self.inner.set_cell(x, y, state, None);
     }
 
     /// Returns the grid width.
@@ -40,17 +65,94 @@ impl WasmGrid {
      
     /// Retrieves the color value at position (x, y).
     pub fn get_pixel(&self, x: u32, y: u32) -> u32 {
-        if x < self.inner.width && y < self.inner.height {
-            let idx = (y * self.inner.width + x) as usize;
-            self.inner.pixels[idx]
-        } else {
-            0 // default color (black) if out-of-bounds
-        }
+        self.inner.get_pixel(x, y)
     }
     
     /// Update the grid simulation.
     pub fn step(&mut self) {
         self.inner.step();
+    }
+    
+    /// Reset the grid
+    pub fn reset(&mut self, clear_walls: bool) {
+        self.inner.reset(clear_walls);
+    }
+    
+    /// Get the number of organisms
+    pub fn organism_count(&self) -> usize {
+        self.inner.organisms.len()
+    }
+    
+    /// Set the food production probability
+    pub fn set_food_production_rate(&mut self, rate: f32) {
+        self.inner.food_production_prob = rate;
+    }
+    
+    /// Set the maximum number of organisms
+    pub fn set_max_organisms(&mut self, max: usize) {
+        self.inner.max_organisms = max;
+    }
+    
+    /// Set the lifespan multiplier
+    pub fn set_lifespan_multiplier(&mut self, multiplier: u32) {
+        self.inner.lifespan_multiplier = multiplier;
+    }
+    
+    /// Set whether organisms die instantly when hit by a killer
+    pub fn set_insta_kill(&mut self, insta_kill: bool) {
+        self.inner.insta_kill = insta_kill;
+    }
+    
+    /// Add a simple organism at the specified position
+    #[wasm_bindgen]
+    pub fn add_organism(&mut self, x: u32, y: u32) -> bool {
+        self.inner.create_basic_organism(x, y)
+    }
+    
+    /// Add a custom organism
+    #[wasm_bindgen]
+    pub fn add_custom_organism(&mut self, x: u32, y: u32, organism_type: u8) -> bool {
+        let mut organism = Organism::new(self.inner.next_organism_id, x, y);
+        
+        match organism_type {
+            // Basic producer
+            0 => {
+                organism.add_cell(CellState::Mouth, 0, 0);
+                organism.add_cell(CellState::Producer, 1, 0);
+                organism.add_cell(CellState::Producer, -1, 0);
+                organism.add_cell(CellState::Producer, 0, 1);
+                organism.add_cell(CellState::Producer, 0, -1);
+            },
+            // Mobile hunter
+            1 => {
+                organism.add_cell(CellState::Mouth, 0, 0);
+                organism.add_cell(CellState::Mover, 1, 0);
+                organism.add_cell(CellState::Killer, 0, 1);
+                organism.add_cell(CellState::Eye, -1, 0);
+            },
+            // Armored producer
+            2 => {
+                organism.add_cell(CellState::Mouth, 0, 0);
+                organism.add_cell(CellState::Producer, 1, 0);
+                organism.add_cell(CellState::Producer, -1, 0);
+                organism.add_cell(CellState::Armor, 0, 1);
+                organism.add_cell(CellState::Armor, 0, -1);
+            },
+            // Default to basic producer
+            _ => {
+                organism.add_cell(CellState::Mouth, 0, 0);
+                organism.add_cell(CellState::Producer, 1, 0);
+                organism.add_cell(CellState::Producer, -1, 0);
+            }
+        }
+        
+        self.inner.add_organism(organism)
+    }
+    
+    /// Create the "Origin of Life" organism in the center
+    #[wasm_bindgen]
+    pub fn origin_of_life(&mut self) {
+        self.inner.origin_of_life();
     }
 }
 
@@ -101,20 +203,15 @@ impl Renderer {
             self.canvas.height() as f64,
         );
 
-        // Draw each pixel from grid.inner.pixels
-        for y in 0..grid.width() {
-            for x in 0..grid.height() {
-                // Calculate index (ensure you use the correct logic based on your grid design)
-                let idx = (y * grid.width() + x) as usize;
-                // Here you would normally extract the pixel from the inner grid.
-                // For illustration, assume you have a method to get a pixel:
-                let color = grid.inner.get_pixel(x, y);
-                // Since our WasmGrid wrapper doesn’t expose pixel data, you may want to add a method to do so.
-                // For now, assume a dummy color:
+        // Draw each pixel from grid
+        for y in 0..grid.height() {
+            for x in 0..grid.width() {
+                let color = grid.get_pixel(x, y);
                 let red = ((color >> 16) & 0xFF) as u8;
                 let green = ((color >> 8) & 0xFF) as u8;
                 let blue = (color & 0xFF) as u8;
                 let color_str = format!("rgb({}, {}, {})", red, green, blue);
+                
                 self.context.set_fill_style(&color_str.into());
                 self.context.fill_rect(
                     (x * self.pixel_size) as f64,

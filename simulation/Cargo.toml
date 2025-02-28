@@ -1,7 +1,9 @@
 [package]
 name = "simulation"
 version = "0.1.0"
-edition = "2024"
+edition = "2021" # Use 2021 edition for stability
 
 [dependencies]
-# rand = "0.9.0"
+rand = "0.8.5"
+# Explicitly pin getrandom to a version known to work with wasm
+getrandom = { version = "=0.2.8", features = ["js"] }

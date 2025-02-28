@@ -2,31 +2,661 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Wasm Grid Simulation</title>
+  <title>Life Engine Simulation - Rust Version</title>
   <style>
-    canvas { border: 1px solid black; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f0f0f0;
+    }
+    h1 {
+      color: #333;
+      text-align: center;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .canvas-container {
+      position: relative;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      background-color: white;
+    }
+    canvas { 
+      display: block;
+    }
+    .stats {
+      width: 100%;
+      padding: 10px;
+      background-color: #333;
+      color: white;
+      display: flex;
+      justify-content: space-around;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+    .stat {
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .tabs {
+      display: flex;
+      width: 100%;
+      border-bottom: 1px solid #ccc;
+      margin-bottom: 10px;
+    }
+    .tab {
+      padding: 10px 20px;
+      background-color: #f1f1f1;
+      border: 1px solid #ccc;
+      border-bottom: none;
+      cursor: pointer;
+      margin-right: 5px;
+      border-radius: 5px 5px 0 0;
+    }
+    .tab.active {
+      background-color: white;
+      border-bottom: 1px solid white;
+      margin-bottom: -1px;
+    }
+    .tab-content {
+      display: none;
+      width: 100%;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+      width: 100%;
+    }
+    .control-group {
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 5px;
+      background-color: white;
+      min-width: 200px;
+      flex: 1;
+    }
+    .control-group h3 {
+      margin-top: 0;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 5px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 14px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button.danger {
+      background-color: #f44336;
+    }
+    button.danger:hover {
+      background-color: #d32f2f;
+    }
+    button.secondary {
+      background-color: #2196F3;
+    }
+    button.secondary:hover {
+      background-color: #0b7dda;
+    }
+    input[type="range"] {
+      width: 100%;
+    }
+    .cell-buttons {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+    }
+    .cell-button {
+      width: 100%;
+      padding: 5px;
+      text-align: center;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+    #empty { background-color: #0E1318; color: white; }
+    #food { background-color: #2F7AB7; color: white; }
+    #wall { background-color: #808080; color: white; }
+    #mouth { background-color: #DEB14D; }
+    #producer { background-color: #15DE59; }
+    #mover { background-color: #60D4FF; }
+    #killer { background-color: #F82380; color: white; }
+    #armor { background-color: #7230DB; color: white; }
+    #eye { background-color: #B6C1EA; }
+    
+    .organism-presets {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .organism-preset {
+      flex: 1;
+      min-width: 150px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .organism-preset:hover {
+      background-color: #f0f0f0;
+    }
+    .form-row {
+      margin-bottom: 8px;
+    }
+    .info-box {
+      padding: 10px;
+      background-color: #f8f8f8;
+      border-left: 4px solid #2196F3;
+      margin: 10px 0;
+    }
   </style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
+  <div class="container">
+    <h1>Life Engine Simulation - Rust Version</h1>
+    
+    <div class="stats">
+      <div class="stat">
+        <div>Organisms</div>
+        <div class="stat-value" id="organism-count">0</div>
+      </div>
+      <div class="stat">
+        <div>Frame Rate</div>
+        <div class="stat-value" id="fps">0</div>
+      </div>
+      <div class="stat">
+        <div>Time</div>
+        <div class="stat-value" id="time">0:00</div>
+      </div>
+    </div>
+    
+    <div class="tabs">
+      <div class="tab active" data-tab="simulation">Simulation</div>
+      <div class="tab" data-tab="world">World</div>
+      <div class="tab" data-tab="organisms">Organisms</div>
+      <div class="tab" data-tab="about">About</div>
+    </div>
+    
+    <div class="tab-content active" id="simulation-tab">
+      <div class="controls">
+        <div class="control-group">
+          <h3>Simulation Controls</h3>
+          <button id="toggle-animation">Pause</button>
+          <button id="step" class="secondary">Step Once</button>
+          <button id="reset" class="danger">Reset Grid</button>
+          <div class="form-row">
+            <label for="sim-speed">Simulation Speed:</label>
+            <input type="range" id="sim-speed" min="1" max="100" value="60">
+            <span id="sim-speed-value">60 FPS</span>
+          </div>
+        </div>
+        
+        <div class="control-group">
+          <h3>Evolution Parameters</h3>
+          <div class="form-row">
+            <label for="food-rate">Food Production Rate:</label>
+            <input type="range" id="food-rate" min="0" max="50" value="5">
+            <span id="food-rate-value">0.5%</span>
+          </div>
+          <div class="form-row">
+            <label for="max-organisms">Maximum Organisms:</label>
+            <input type="range" id="max-organisms" min="10" max="2000" value="1000">
+            <span id="max-organisms-value">1000</span>
+          </div>
+          <div class="form-row">
+            <label for="lifespan-multiplier">Lifespan Multiplier:</label>
+            <input type="range" id="lifespan-multiplier" min="10" max="500" value="100">
+            <span id="lifespan-multiplier-value">100x</span>
+          </div>
+          <div class="form-row">
+            <label>
+              <input type="checkbox" id="insta-kill"> One-touch kill
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="world-tab">
+      <div class="controls">
+        <div class="control-group">
+          <h3>Grid Size</h3>
+          <div class="form-row">
+            <label for="grid-width">Width:</label>
+            <input type="number" id="grid-width" min="10" max="1000" value="100">
+          </div>
+          <div class="form-row">
+            <label for="grid-height">Height:</label>
+            <input type="number" id="grid-height" min="10" max="1000" value="100">
+          </div>
+          <div class="form-row">
+            <label for="pixel-size">Pixel Size:</label>
+            <input type="number" id="pixel-size" min="1" max="20" value="5">
+          </div>
+          <button id="resize-grid">Apply Size</button>
+        </div>
+        
+        <div class="control-group">
+          <h3>Cell Types</h3>
+          <div class="cell-buttons">
+            <div class="cell-button" id="empty">Empty</div>
+            <div class="cell-button" id="food">Food</div>
+            <div class="cell-button" id="wall">Wall</div>
+            <div class="cell-button" id="mouth">Mouth</div>
+            <div class="cell-button" id="producer">Producer</div>
+            <div class="cell-button" id="mover">Mover</div>
+            <div class="cell-button" id="killer">Killer</div>
+            <div class="cell-button" id="armor">Armor</div>
+            <div class="cell-button" id="eye">Eye</div>
+          </div>
+          <div class="info-box">
+            Click and drag on the grid to place cells. Use the cell types above to select what to place.
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="organisms-tab">
+      <div class="controls">
+        <div class="control-group">
+          <h3>Add Organisms</h3>
+          <button id="origin-of-life">Origin of Life</button>
+          <p>Create the first organism in the center of the grid.</p>
+          
+          <h4>Organism Presets</h4>
+          <div class="organism-presets">
+            <div class="organism-preset" data-type="0">
+              <h5>Producer</h5>
+              <p>Basic organism with producers</p>
+            </div>
+            <div class="organism-preset" data-type="1">
+              <h5>Hunter</h5>
+              <p>Mobile organism with a killer cell</p>
+            </div>
+            <div class="organism-preset" data-type="2">
+              <h5>Armored</h5>
+              <p>Producer with armor protection</p>
+            </div>
+          </div>
+          <div class="info-box">
+            Click on a preset, then click on the grid to place the organism.
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="about-tab">
+      <div class="controls">
+        <div class="control-group">
+          <h3>About Life Engine</h3>
+          <p>This is a cellular automaton designed to simulate biological evolution. Organisms can eat, reproduce, mutate, and adapt.</p>
+          
+          <h4>Cell Types</h4>
+          <ul>
+            <li><strong style="color:#DEB14D">Mouth:</strong> Eats food from adjacent cells</li>
+            <li><strong style="color:#15DE59">Producer:</strong> Generates food in adjacent empty cells</li>
+            <li><strong style="color:#60D4FF">Mover:</strong> Allows organisms to move around</li>
+            <li><strong style="color:#F82380">Killer:</strong> Damages other organisms in adjacent cells</li>
+            <li><strong style="color:#7230DB">Armor:</strong> Protects against killer cells</li>
+            <li><strong style="color:#B6C1EA">Eye:</strong> Enables organisms to see and move toward food or away from threats</li>
+          </ul>
+          
+          <h4>How It Works</h4>
+          <p>Organisms collect food to reproduce. When they have collected enough food (equal to their number of cells), they create offspring. The offspring might mutate, gaining or losing cells or changing cell types.</p>
+          <p>Natural selection drives evolution: organisms that are better at collecting food and avoiding threats will reproduce more successfully.</p>
+          
+          <h4>Implementation</h4>
+          <p>This version is implemented in Rust, compiled to WebAssembly for the browser. It's a port of the original JavaScript-based Life Engine.</p>
+        </div>
+      </div>
+    </div>
+    
+    <div class="canvas-container">
+      <canvas id="canvas"></canvas>
+    </div>
+  </div>
+
   <script type="module">
     import init, { WasmGrid, Renderer, start_animation } from './out/renderer_wasm.js';
+
+    let grid;
+    let renderer;
+    let isAnimating = true;
+    let animationId;
+    let selectedCellType = 0; // Default: Empty
+    let frameCount = 0;
+    let lastFpsUpdate = 0;
+    let fps = 0;
+    let simSpeed = 60; // Default simulation speed
+    let simulationTime = 0;
+    let selectedOrganismType = 0;
+    
+    const cellTypeMap = {
+      'empty': 0,
+      'food': 1,
+      'wall': 2,
+      'mouth': 3,
+      'producer': 4,
+      'mover': 5,
+      'killer': 6,
+      'armor': 7,
+      'eye': 8
+    };
 
     async function run() {
       await init();
       
-      // Create a grid (simulation) of 100x100.
-      const grid = new WasmGrid(100, 100);
-      // Set an initial pixel for demonstration.
-      grid.set_pixel(10, 10, 0xFF0000); // red
+      const width = parseInt(document.getElementById('grid-width').value);
+      const height = parseInt(document.getElementById('grid-height').value);
+      const pixelSize = parseInt(document.getElementById('pixel-size').value);
       
-      // Create a renderer with a pixel size of 5.
-      const renderer = new Renderer("canvas", 5);
+      // Create a grid with the specified dimensions
+      grid = new WasmGrid(width, height);
       
-      // Start the animation loop.
-      start_animation(renderer, grid);
+      // Create a renderer with the specified pixel size
+      renderer = new Renderer("canvas", pixelSize);
+      
+      // Add event listeners
+      setupEventListeners();
+      
+      // Set the initial food rate
+      const foodRate = parseFloat(document.getElementById('food-rate').value) / 1000;
+      grid.set_food_production_rate(foodRate);
+      
+      // Set maximum organisms
+      grid.set_max_organisms(parseInt(document.getElementById('max-organisms').value));
+      
+      // Set lifespan multiplier
+      grid.set_lifespan_multiplier(parseInt(document.getElementById('lifespan-multiplier').value));
+      
+      // Set insta-kill setting
+      grid.set_insta_kill(document.getElementById('insta-kill').checked);
+      
+      // Start the animation loop
+      startAnimation();
+      
+      // Update the displayed values
+      updateStats();
     }
     
+    function setupEventListeners() {
+      // Tab navigation
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          
+          tab.classList.add('active');
+          document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+        });
+      });
+      
+      // Cell type selection
+      document.querySelectorAll('.cell-button').forEach(button => {
+        button.addEventListener('click', () => {
+          document.querySelectorAll('.cell-button').forEach(b => 
+            b.style.border = '1px solid #ccc');
+          button.style.border = '2px solid #000';
+          selectedCellType = cellTypeMap[button.id];
+        });
+      });
+      
+      // Organism preset selection
+      document.querySelectorAll('.organism-preset').forEach(preset => {
+        preset.addEventListener('click', () => {
+          document.querySelectorAll('.organism-preset').forEach(p => 
+            p.style.border = '1px solid #ccc');
+          preset.style.border = '2px solid #000';
+          selectedOrganismType = parseInt(preset.dataset.type);
+          
+          // Switch to the organisms tab
+          document.querySelector('.tab[data-tab="organisms"]').click();
+        });
+      });
+      
+      // Canvas click handler
+      const canvas = document.getElementById('canvas');
+      canvas.addEventListener('mousedown', handleCanvasClick);
+      canvas.addEventListener('mousemove', (event) => {
+        if (event.buttons === 1) {
+          handleCanvasClick(event);
+        }
+      });
+      
+      // Evolution parameters
+      // Food production rate
+      const foodRateSlider = document.getElementById('food-rate');
+      foodRateSlider.addEventListener('input', () => {
+        const rate = parseInt(foodRateSlider.value) / 1000;
+        grid.set_food_production_rate(rate);
+        document.getElementById('food-rate-value').textContent = (rate * 100).toFixed(1) + '%';
+      });
+      
+      // Maximum organisms
+      const maxOrganismsSlider = document.getElementById('max-organisms');
+      maxOrganismsSlider.addEventListener('input', () => {
+        const maxOrganisms = parseInt(maxOrganismsSlider.value);
+        grid.set_max_organisms(maxOrganisms);
+        document.getElementById('max-organisms-value').textContent = maxOrganisms;
+      });
+      
+      // Lifespan multiplier
+      const lifespanSlider = document.getElementById('lifespan-multiplier');
+      lifespanSlider.addEventListener('input', () => {
+        const multiplier = parseInt(lifespanSlider.value);
+        grid.set_lifespan_multiplier(multiplier);
+        document.getElementById('lifespan-multiplier-value').textContent = multiplier + 'x';
+      });
+      
+      // Insta-kill checkbox
+      const instaKillCheckbox = document.getElementById('insta-kill');
+      instaKillCheckbox.addEventListener('change', () => {
+        grid.set_insta_kill(instaKillCheckbox.checked);
+      });
+      
+      // Simulation speed
+      const simSpeedSlider = document.getElementById('sim-speed');
+      simSpeedSlider.addEventListener('input', () => {
+        simSpeed = parseInt(simSpeedSlider.value);
+        document.getElementById('sim-speed-value').textContent = simSpeed + ' FPS';
+      });
+      
+      // Reset button
+      document.getElementById('reset').addEventListener('click', () => {
+        if (confirm('This will reset the entire simulation. Are you sure?')) {
+          grid.reset(true); // Clear walls as well
+          renderer.render(grid);
+          simulationTime = 0;
+          updateStats();
+        }
+      });
+      
+      // Step button
+      document.getElementById('step').addEventListener('click', () => {
+        if (isAnimating) {
+          pauseAnimation();
+        }
+        grid.step();
+        renderer.render(grid);
+        simulationTime++;
+        updateStats();
+      });
+      
+      // Toggle animation button
+      document.getElementById('toggle-animation').addEventListener('click', toggleAnimation);
+      
+      // Resize grid button
+      document.getElementById('resize-grid').addEventListener('click', resizeGrid);
+      
+      // Origin of life button
+      document.getElementById('origin-of-life').addEventListener('click', () => {
+        grid.origin_of_life();
+        renderer.render(grid);
+        updateStats();
+      });
+    }
+    
+    function handleCanvasClick(event) {
+      const canvas = document.getElementById('canvas');
+      const rect = canvas.getBoundingClientRect();
+      const pixelSize = parseInt(document.getElementById('pixel-size').value);
+      
+      const canvasX = event.clientX - rect.left;
+      const canvasY = event.clientY - rect.top;
+      
+      const gridX = Math.floor(canvasX / pixelSize);
+      const gridY = Math.floor(canvasY / pixelSize);
+      
+      if (gridX >= 0 && gridX < grid.width() && gridY >= 0 && gridY < grid.height()) {
+        // Check which tab is active to determine the action
+        const activeTab = document.querySelector('.tab.active').dataset.tab;
+        
+        if (activeTab === 'world') {
+          // In world tab, place cells
+          grid.set_cell(gridX, gridY, selectedCellType);
+        } else if (activeTab === 'organisms') {
+          // In organisms tab, place organisms
+          grid.add_custom_organism(gridX, gridY, selectedOrganismType);
+        }
+        
+        renderer.render(grid);
+        updateStats();
+      }
+    }
+    
+    function startAnimation() {
+      isAnimating = true;
+      document.getElementById('toggle-animation').textContent = 'Pause';
+      lastFpsUpdate = performance.now();
+      frameCount = 0;
+      animationLoop();
+    }
+    
+    function pauseAnimation() {
+      isAnimating = false;
+      document.getElementById('toggle-animation').textContent = 'Play';
+      if (animationId) {
+        window.cancelAnimationFrame(animationId);
+      }
+    }
+    
+    function toggleAnimation() {
+      if (isAnimating) {
+        pauseAnimation();
+      } else {
+        startAnimation();
+      }
+    }
+    
+    function animationLoop() {
+      const now = performance.now();
+      const elapsed = now - lastFpsUpdate;
+      
+      // Only step the simulation if enough time has passed based on sim speed
+      if (elapsed >= 1000 / simSpeed) {
+        grid.step();
+        renderer.render(grid);
+        simulationTime++;
+        
+        // Update FPS calculation
+        frameCount++;
+        if (elapsed >= 1000) {
+          fps = Math.round((frameCount * 1000) / elapsed);
+          frameCount = 0;
+          lastFpsUpdate = now;
+          
+          // Update stats every second
+          updateStats();
+        }
+      }
+      
+      if (isAnimating) {
+        animationId = window.requestAnimationFrame(animationLoop);
+      }
+    }
+    
+    function updateStats() {
+      document.getElementById('organism-count').textContent = grid.organism_count();
+      document.getElementById('fps').textContent = fps;
+      document.getElementById('time').textContent = formatTime(simulationTime);
+    }
+    
+    function formatTime(ticks) {
+      const minutes = Math.floor(ticks / 60);
+      const seconds = ticks % 60;
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+    
+    function resizeGrid() {
+      const width = parseInt(document.getElementById('grid-width').value);
+      const height = parseInt(document.getElementById('grid-height').value);
+      const pixelSize = parseInt(document.getElementById('pixel-size').value);
+      
+      // Confirm with user if resizing will reset the simulation
+      if (grid.organism_count() > 0) {
+        if (!confirm('Resizing will reset the simulation. Continue?')) {
+          return;
+        }
+      }
+      
+      // Cancel the current animation
+      if (isAnimating) {
+        pauseAnimation();
+      }
+      
+      // Create a new grid and renderer
+      grid = new WasmGrid(width, height);
+      renderer = new Renderer("canvas", pixelSize);
+      
+      // Apply all current settings to the new grid
+      const foodRate = parseFloat(document.getElementById('food-rate').value) / 1000;
+      grid.set_food_production_rate(foodRate);
+      grid.set_max_organisms(parseInt(document.getElementById('max-organisms').value));
+      grid.set_lifespan_multiplier(parseInt(document.getElementById('lifespan-multiplier').value));
+      grid.set_insta_kill(document.getElementById('insta-kill').checked);
+      
+      // Reset simulation time
+      simulationTime = 0;
+      
+      // Render the new grid
+      renderer.render(grid);
+      updateStats();
+      
+      // Restart animation if it was running
+      if (document.getElementById('toggle-animation').textContent === 'Pause') {
+        startAnimation();
+      }
+    }
+    
+    // Initialize the simulation when the page loads
     run();
   </script>
 </body>
