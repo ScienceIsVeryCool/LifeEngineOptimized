@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "0.2.1"
-# simulation = { path = "../simulation" }
+simulation = { path = "../simulation" }
 web-sys = { version = "0.3", features = [
   "Window",
   "Document",

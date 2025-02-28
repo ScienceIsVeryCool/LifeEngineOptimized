@@ -2,31 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Wasm Grid Example</title>
+  <title>Wasm Grid Simulation</title>
   <style>
-    /* Optional: ensure the canvas is visible */
-    canvas {
-      border: 1px solid black;
-    }
+    canvas { border: 1px solid black; }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
   <script type="module">
-    import init, { Grid } from './out/renderer_wasm.js';
+    import init, { WasmGrid, Renderer, start_animation } from './out/renderer_wasm.js';
 
     async function run() {
-      // Initialize the wasm module
       await init();
-
-      // Create a grid of 100x100 pixels
-      const grid = new Grid(100, 100, "canvas");
       
-      // Manipulate some pixels – here we set one pixel to red
-      grid.set_pixel(10, 10, 0xFF0000); // Red color
+      // Create a grid (simulation) of 100x100.
+      const grid = new WasmGrid(100, 100);
+      // Set an initial pixel for demonstration.
+      grid.set_pixel(10, 10, 0xFF0000); // red
       
-      // Render the grid with each pixel drawn as a 5x5 block
-      grid.render(5);
+      // Create a renderer with a pixel size of 5.
+      const renderer = new Renderer("canvas", 5);
+      
+      // Start the animation loop.
+      start_animation(renderer, grid);
     }
     
     run();
