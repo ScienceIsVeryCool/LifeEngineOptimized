@@ -222,8 +222,10 @@ impl Organism {
     }
     
     /// Get the maximum lifespan of this organism
-    pub fn max_lifespan(&self) -> u32 {
-        self.cells.len() as u32 * 100 // 100 ticks per cell
+    pub fn max_lifespan(&self, lifespan_multiplier: u32) -> u32 {
+        // Base lifespan is still cells.len() * 100
+        // Multiply by lifespan_multiplier, with a minimum of 1 to prevent zero lifespan
+        (self.cells.len() as u32 * 100 * lifespan_multiplier).max(1) // TODO Does this work?
     }
     
     /// Try to reproduce (returns a new organism if successful)
@@ -453,7 +455,8 @@ impl Organism {
     /// Update the organism for one time step
     pub fn update(&mut self, grid_width: u32, grid_height: u32,
                   is_position_clear: impl Fn(u32, u32) -> bool,
-                  food_at_position: impl Fn(u32, u32) -> bool) {
+                  food_at_position: impl Fn(u32, u32) -> bool,
+                  lifespan_multiplier: u32) {
         if !self.is_alive {
             return;
         }
@@ -461,7 +464,7 @@ impl Organism {
         self.lifetime += 1;
         
         // Check if organism died of old age
-        if self.lifetime >= self.max_lifespan() {
+        if self.lifetime >= self.max_lifespan(lifespan_multiplier) {
             self.is_alive = false;
             return;
         }

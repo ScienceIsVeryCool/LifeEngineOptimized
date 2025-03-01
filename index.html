@@ -228,13 +228,13 @@
           </div>
           <div class="form-row">
             <label for="max-organisms">Maximum Organisms:</label>
-            <input type="range" id="max-organisms" min="10" max="2000" value="1000">
-            <span id="max-organisms-value">1000</span>
+            <input type="range" id="max-organisms" min="10" max="20000" value="5000">
+            <span id="max-organisms-value">5000</span>
           </div>
           <div class="form-row">
             <label for="lifespan-multiplier">Lifespan Multiplier:</label>
-            <input type="range" id="lifespan-multiplier" min="10" max="500" value="100">
-            <span id="lifespan-multiplier-value">100x</span>
+            <input type="range" id="lifespan-multiplier" min="1" max="50" value="1">
+            <span id="lifespan-multiplier-value">1x</span>
           </div>
           <div class="form-row">
             <label>
@@ -659,7 +659,8 @@
       grid.set_max_organisms(parseInt(document.getElementById('max-organisms').value));
       grid.set_lifespan_multiplier(parseInt(document.getElementById('lifespan-multiplier').value));
       grid.set_insta_kill(document.getElementById('insta-kill').checked);
-      
+      grid.set_food_blocks_reproduction(document.getElementById('food-blocks').checked);
+
       // Reset simulation time
       simulationTime = 0;
       

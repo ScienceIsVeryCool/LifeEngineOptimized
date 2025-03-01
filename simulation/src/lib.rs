@@ -74,6 +74,7 @@ pub struct Grid {
     pub lifespan_multiplier: u32,  // Multiplier for organism lifespan
     pub insta_kill: bool,          // Whether organisms die instantly when hit by a killer
     pub food_blocks_reproduction: bool,  // Add this field
+
 }
 
 impl Grid {
@@ -602,8 +603,8 @@ impl Grid {
             };
             
             // Update the organism with the closures
-            updated_org.update(width, height, is_position_clear, has_food_at);
-            
+            updated_org.update(width, height, is_position_clear, has_food_at, self.lifespan_multiplier);
+
             updated_organisms.push(updated_org);
         }
         
