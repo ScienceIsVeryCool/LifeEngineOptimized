@@ -302,49 +302,55 @@ impl Grid {
     }
     
 // Fix for process_reproduction function
+// Updated process_reproduction function to avoid borrowing conflict
+
 fn process_reproduction(&mut self) {
     let mut new_organisms = Vec::new();
     let max_organisms = self.max_organisms;
+    let current_organism_count = self.organisms.len();
     let width = self.width;
     let height = self.height;
     
-    // First phase: collect reproduction data
-    let mut reproduction_data = Vec::new();
+    // Store organisms that will attempt reproduction
+    let mut reproduction_candidates = Vec::new();
     
-    for org in &mut self.organisms {
-        if !org.is_alive {
+    // First get a list of organisms eligible for reproduction
+    for i in 0..self.organisms.len() {
+        if !self.organisms[i].is_alive {
             continue;
         }
         
-        // Check if we can add more organisms
-        if self.organisms.len() + new_organisms.len() < max_organisms || max_organisms == 0 {
-            if let Some(offspring) = org.try_reproduce() {
-                reproduction_data.push(offspring);
-            }
-        }
+        reproduction_candidates.push(i);
     }
     
-    // Second phase: check placement and add valid organisms
-    for mut offspring in reproduction_data {
-        // Check if all cells can be placed
-        let can_place = {
-            let mut is_valid = true;
-            for cell in &offspring.cells {
-                let (x, y) = offspring.get_cell_position(cell);
-                if x >= width || y >= height || !self.is_position_clear(x, y) {
-                    is_valid = false;
-                    break;
+    // Process reproduction without borrowing self.organisms directly
+    for org_idx in reproduction_candidates {
+        // Check if we can add more organisms
+        if current_organism_count + new_organisms.len() < max_organisms || max_organisms == 0 {
+            // Try to reproduce by temporarily borrowing
+            if let Some(offspring) = self.organisms[org_idx].try_reproduce() {
+                // Check if offspring can be placed
+                let can_place = {
+                    let mut is_valid = true;
+                    for cell in &offspring.cells {
+                        let (x, y) = offspring.get_cell_position(cell);
+                        if x >= width || y >= height || !self.is_position_clear(x, y) {
+                            is_valid = false;
+                            break;
+                        }
+                    }
+                    is_valid
+                };
+                
+                if can_place {
+                    // Ensure proper ID
+                    let mut final_offspring = offspring;
+                    final_offspring.id = self.next_organism_id;
+                    self.next_organism_id += 1;
+                    
+                    new_organisms.push(final_offspring);
                 }
             }
-            is_valid
-        };
-        
-        if can_place {
-            // Ensure proper ID
-            offspring.id = self.next_organism_id;
-            self.next_organism_id += 1;
-            
-            new_organisms.push(offspring);
         }
     }
     

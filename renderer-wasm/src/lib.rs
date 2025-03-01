@@ -4,6 +4,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
 use simulation::{Grid as CoreGrid, CellState, Organism};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 mod utils;
 
@@ -13,8 +15,6 @@ pub fn start() -> Result<(), JsValue> {
     utils::set_panic_hook();
     Ok(())
 }
-// use std::cell::RefCell;
-// use std::rc::Rc;
 
 #[wasm_bindgen]
 pub struct WasmGrid {
