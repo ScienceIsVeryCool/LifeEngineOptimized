@@ -188,8 +188,8 @@ impl Grid {
         
         // Add some basic cells
         organism.add_cell(CellState::Mouth, 0, 0); // Center
-        organism.add_cell(CellState::Producer, 1, 0); // Right
-        organism.add_cell(CellState::Producer, -1, 0); // Left
+        organism.add_cell(CellState::Producer, 1, 1); // Up Right
+        organism.add_cell(CellState::Producer, -1, -1); // Down Left
         
         self.add_organism(organism)
     }
