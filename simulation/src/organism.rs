@@ -226,28 +226,56 @@ impl Organism {
     }
     
     /// Try to reproduce (returns a new organism if successful)
+    /// Try to reproduce (returns a new organism if successful)
     pub fn try_reproduce(&mut self) -> Option<Organism> {
         if self.food_collected >= self.food_needed_to_reproduce() {
             // Reduce the food collected
             self.food_collected -= self.food_needed_to_reproduce();
             
             // Determine where the offspring should go
-            let direction = Direction::random();
-            let (dx, dy) = direction.to_delta();
-            let birth_distance = 4; // Base distance
+            let directions = [
+                Direction::Up,
+                Direction::Right, 
+                Direction::Down, 
+                Direction::Left
+            ];
             
-            let offset_x = dx * (birth_distance + rand::thread_rng().gen_range(1..4));
-            let offset_y = dy * (birth_distance + rand::thread_rng().gen_range(1..4));
+            // Try each direction to find a suitable spot
+            for &direction in &directions {
+                let (dx, dy) = direction.to_delta();
+                let birth_distance = self.calculate_birth_distance();
+                
+                // Calculate potential position with some randomness
+                let offset_x = dx * (birth_distance + rand::thread_rng().gen_range(1..4));
+                let offset_y = dy * (birth_distance + rand::thread_rng().gen_range(1..4));
+                
+                let new_x = (self.x as i32 + offset_x).max(0) as u32;
+                let new_y = (self.y as i32 + offset_y).max(0) as u32;
+                
+                // Create offspring at this position
+                let mut offspring = Organism::new_from_parent(0, new_x, new_y, self);
+                
+                // Return the offspring - position checking will be done at grid level
+                return Some(offspring);
+            }
             
-            let new_x = (self.x as i32 + offset_x).max(0) as u32;
-            let new_y = (self.y as i32 + offset_y).max(0) as u32;
-            
-            // Create offspring
-            let new_id = self.id + 1; // This is simplistic; in reality needs to be managed globally
-            Some(Organism::new_from_parent(new_id, new_x, new_y, self))
+            // If we get here, all directions failed
+            None
         } else {
             None
         }
+    }
+
+    fn calculate_birth_distance(&self) -> i32 {
+        // Find the maximum extent of the organism in any direction
+        let mut max_extent = 0;
+        for cell in &self.cells {
+            let extent = cell.x.abs().max(cell.y.abs());
+            max_extent = max_extent.max(extent);
+        }
+        
+        // Birth distance needs to be at least the max extent plus a buffer
+        (max_extent + 2) as i32
     }
     
     /// Mutate this organism by adding, changing, or removing a cell

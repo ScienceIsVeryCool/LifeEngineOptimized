@@ -158,17 +158,16 @@ impl Grid {
             self.next_organism_id += 1;
         }
         
-        // Check if all cells can be placed
-        let can_place = organism.cells.iter().all(|cell| {
-            let (x, y) = organism.get_cell_position(cell);
-            x < self.width && y < self.height && self.is_position_clear(x, y)
-        });
+        // More thorough check if all cells can be placed
+        let can_place = self.is_position_clear_for_organism(&organism);
         
         if can_place {
             // Place all cells
             for cell in &organism.cells {
                 let (x, y) = organism.get_cell_position(cell);
-                self.set_cell(x, y, cell.state, Some(organism.id));
+                if x < self.width && y < self.height {
+                    self.set_cell(x, y, cell.state, Some(organism.id));
+                }
             }
             
             self.organisms.push(organism);
@@ -177,20 +176,44 @@ impl Grid {
             false
         }
     }
-    
+    fn is_position_clear_for_organism(&self, organism: &Organism) -> bool {
+        for cell in &organism.cells {
+            let (x, y) = organism.get_cell_position(cell);
+            
+            // Check bounds
+            if x >= self.width || y >= self.height {
+                return false;
+            }
+            
+            // Check cell availability (must be empty or food to be considered clear)
+            let idx = (y * self.width + x) as usize;
+            let grid_cell = &self.cells[idx];
+            
+            if !(grid_cell.state == CellState::Empty || grid_cell.state == CellState::Food) {
+                return false;
+            }
+        }
+        
+        // Check if there's a straight path from parent to offspring
+        // (Note: this would need the parent reference, which would be more complex)
+        
+        true
+    }
     /// Create a new basic organism at a position
     pub fn create_basic_organism(&mut self, x: u32, y: u32) -> bool {
         if x >= self.width || y >= self.height {
             return false;
         }
         
+        // Create a new organism - use x and y from the parameters
         let mut organism = Organism::new(self.next_organism_id, x, y);
         
-        // Add some basic cells
+        // Add some basic cells to the organism object
         organism.add_cell(CellState::Mouth, 0, 0); // Center
         organism.add_cell(CellState::Producer, 1, 1); // Up Right
         organism.add_cell(CellState::Producer, -1, -1); // Down Left
         
+        // Add the organism to the grid
         self.add_organism(organism)
     }
     
@@ -300,241 +323,151 @@ impl Grid {
             }
         }
     }
-    
-// Fix for process_reproduction function
-// Updated process_reproduction function to avoid borrowing conflict
+        
+    // Fix for process_reproduction function
+    // Updated process_reproduction function to avoid borrowing conflict
+    fn is_straight_path_clear(&self, x1: u32, y1: u32, x2: u32, y2: u32) -> bool {
+        // Check if the points are in a straight line (horizontally or vertically)
+        if x1 == x2 {
+            // Vertical line
+            let start_y = y1.min(y2);
+            let end_y = y1.max(y2);
+            
+            for y in start_y..=end_y {
+                if !self.is_position_clear(x1, y) {
+                    return false;
+                }
+            }
+            return true;
+        } else if y1 == y2 {
+            // Horizontal line
+            let start_x = x1.min(x2);
+            let end_x = x1.max(x2);
+            
+            for x in start_x..=end_x {
+                if !self.is_position_clear(x, y1) {
+                    return false;
+                }
+            }
+            return true;
+        } else {
+            // Not a straight line, so we'll consider it blocked
+            return false;
+        }
+    }
 
-fn process_reproduction(&mut self) {
-    let mut new_organisms = Vec::new();
-    let max_organisms = self.max_organisms;
-    let current_organism_count = self.organisms.len();
-    let width = self.width;
-    let height = self.height;
-    
-    // Store organisms that will attempt reproduction
-    let mut reproduction_candidates = Vec::new();
-    
-    // First get a list of organisms eligible for reproduction
-    for i in 0..self.organisms.len() {
-        if !self.organisms[i].is_alive {
-            continue;
+
+
+    fn process_reproduction(&mut self) {
+        let mut new_organisms = Vec::new();
+        let max_organisms = self.max_organisms;
+        let current_organism_count = self.organisms.len();
+        
+        // Store organisms that will attempt reproduction
+        let mut reproduction_candidates = Vec::new();
+        
+        // First get a list of organisms eligible for reproduction
+        for i in 0..self.organisms.len() {
+            if !self.organisms[i].is_alive {
+                continue;
+            }
+            
+            reproduction_candidates.push(i);
         }
         
-        reproduction_candidates.push(i);
-    }
-    
-    // Process reproduction without borrowing self.organisms directly
-    for org_idx in reproduction_candidates {
-        // Check if we can add more organisms
-        if current_organism_count + new_organisms.len() < max_organisms || max_organisms == 0 {
-            // Try to reproduce by temporarily borrowing
-            if let Some(offspring) = self.organisms[org_idx].try_reproduce() {
-                // Check if offspring can be placed
-                let can_place = {
-                    let mut is_valid = true;
-                    for cell in &offspring.cells {
-                        let (x, y) = offspring.get_cell_position(cell);
-                        if x >= width || y >= height || !self.is_position_clear(x, y) {
-                            is_valid = false;
-                            break;
-                        }
-                    }
-                    is_valid
-                };
+        // Process reproduction without borrowing self.organisms directly
+        for org_idx in reproduction_candidates {
+            // Check if we can add more organisms
+            if current_organism_count + new_organisms.len() < max_organisms || max_organisms == 0 {
+                // Get parent organism's position
+                let parent_x = self.organisms[org_idx].x;
+                let parent_y = self.organisms[org_idx].y;
                 
-                if can_place {
-                    // Ensure proper ID
-                    let mut final_offspring = offspring;
-                    final_offspring.id = self.next_organism_id;
+                // Try to reproduce
+                if let Some(mut offspring) = self.organisms[org_idx].try_reproduce() {
+                    // Set the ID now
+                    offspring.id = self.next_organism_id;
                     self.next_organism_id += 1;
                     
-                    new_organisms.push(final_offspring);
+                    // Check for position clearance and straight path
+                    if self.is_position_clear_for_organism(&offspring) && 
+                    self.is_straight_path_clear(parent_x, parent_y, offspring.x, offspring.y) {
+                        new_organisms.push(offspring);
+                    } else {
+                        // Try alternative positions
+                        let alternative_positions = self.get_alternative_positions(&offspring);
+                        for (new_x, new_y) in alternative_positions {
+                            // Create a copy at the new position
+                            let mut alt_offspring = offspring.clone();
+                            alt_offspring.x = new_x;
+                            alt_offspring.y = new_y;
+                            
+                            if self.is_position_clear_for_organism(&alt_offspring) && 
+                            self.is_straight_path_clear(parent_x, parent_y, new_x, new_y) {
+                                new_organisms.push(alt_offspring);
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }
-    }
-    
-    // Add all new organisms
-    for org in new_organisms {
-        self.add_organism(org);
-    }
-}
-
-    
-    
-// Function with fixed borrowing in process_eating method 
-fn process_eating(&mut self) {
-    // First collect all eating actions to avoid borrowing conflicts
-    let mut food_eaten = Vec::new();
-    let mut org_food_collected = Vec::new();
-    
-    // Collect all eating actions
-    for (org_idx, org) in self.organisms.iter().enumerate() {
-        if !org.is_alive {
-            continue;
-        }
         
-        for cell in &org.cells {
-            if cell.state != CellState::Mouth {
-                continue;
-            }
-            
-            let (cx, cy) = org.get_cell_position(cell);
-            let adjacents = [(0, 1), (1, 0), (0, -1), (-1, 0)];
-            
-            for (dx, dy) in adjacents.iter() {
-                let nx = (cx as i32 + dx).max(0).min(self.width as i32 - 1) as u32;
-                let ny = (cy as i32 + dy).max(0).min(self.height as i32 - 1) as u32;
-                
-                // If there's food 
-                if self.has_food_at(nx, ny) {
-                    food_eaten.push((nx, ny));
-                    org_food_collected.push(org_idx);
+        // Add all new organisms one by one
+        for org in new_organisms {
+            self.add_organism(org);
+        }
+    }
+
+    fn get_alternative_positions(&self, organism: &Organism) -> Vec<(u32, u32)> {
+    let mut positions = Vec::new();
+    let base_x = organism.x;
+    let base_y = organism.y;
+    
+    // Try different offsets in a spiral pattern
+    for distance in 1..10 {
+        // Cast distance to i32 for the ranges
+        let distance_i32 = distance as i32;
+        
+        // Use explicit i32 type for dx and dy
+        for dx in (-distance_i32)..=distance_i32 {
+            for dy in (-distance_i32)..=distance_i32 {
+                // Only consider the "shell" at this distance
+                if dx.abs() == distance_i32 || dy.abs() == distance_i32 {
+                    let new_x = (base_x as i32 + dx).max(0) as u32;
+                    let new_y = (base_y as i32 + dy).max(0) as u32;
+                    
+                    // Don't add positions outside grid bounds
+                    if new_x < self.width && new_y < self.height {
+                        positions.push((new_x, new_y));
+                    }
                 }
             }
         }
-    }
-    
-    // Apply food collection to organisms
-    for org_idx in org_food_collected {
-        self.organisms[org_idx].food_collected += 1;
-    }
-    
-    // Remove all eaten food
-    for (x, y) in food_eaten {
-        self.set_cell(x, y, CellState::Empty, None);
-    }
-}
-
-// Fixed update_organisms method to resolve borrowing issues
-fn update_organisms(&mut self) {
-    // Process eating
-    self.process_eating();
-    
-    // Process killer cells
-    self.process_killer_cells();
-    
-    // First clear all organisms from the grid
-    {
-        let mut cells_to_clear = Vec::new();
         
-        for org in &self.organisms {
+        // If we have enough positions, stop
+        if positions.len() >= 20 {
+            break;
+        }
+    }
+    
+    positions
+}
+        
+    // Function with fixed borrowing in process_eating method 
+    fn process_eating(&mut self) {
+        // First collect all eating actions to avoid borrowing conflicts
+        let mut food_eaten = Vec::new();
+        let mut org_food_collected = Vec::new();
+        
+        // Collect all eating actions
+        for (org_idx, org) in self.organisms.iter().enumerate() {
             if !org.is_alive {
                 continue;
             }
             
             for cell in &org.cells {
-                let (x, y) = org.get_cell_position(cell);
-                if x < self.width && y < self.height {
-                    cells_to_clear.push((x, y, org.id));
-                }
-            }
-        }
-        
-        // Clear cells
-        for (x, y, org_id) in cells_to_clear {
-            let idx = (y * self.width + x) as usize;
-            if self.cells[idx].owner == Some(org_id) {
-                self.cells[idx] = Cell { state: CellState::Empty, owner: None };
-            }
-        }
-    }
-    
-    // Update organisms
-    let mut updated_organisms = Vec::new();
-    let width = self.width;
-    let height = self.height;
-    
-    for org in &self.organisms {
-        if !org.is_alive {
-            updated_organisms.push(org.clone());
-            continue;
-        }
-        
-        // Clone the organism for the update
-        let mut updated_org = org.clone();
-        
-        // Save the grid state for checking clear positions
-        let is_position_clear = |x: u32, y: u32| -> bool {
-            if x >= width || y >= height {
-                return false;
-            }
-            let idx = (y * width + x) as usize;
-            let cell = &self.cells[idx];
-            cell.state == CellState::Empty || cell.state == CellState::Food
-        };
-        
-        let has_food_at = |x: u32, y: u32| -> bool {
-            if x >= width || y >= height {
-                return false;
-            }
-            let idx = (y * width + x) as usize;
-            let cell = &self.cells[idx];
-            cell.state == CellState::Food
-        };
-        
-        // Update the organism with the closures
-        updated_org.update(width, height, is_position_clear, has_food_at);
-        
-        updated_organisms.push(updated_org);
-    }
-    
-    // Replace the old organisms with the updated ones
-    self.organisms = updated_organisms;
-    
-    // Re-place all organisms on the grid
-    let mut cells_to_set = Vec::new();
-    for org in &self.organisms {
-        if !org.is_alive {
-            continue;
-        }
-        
-        for cell in &org.cells {
-            let (x, y) = org.get_cell_position(cell);
-            if x < self.width && y < self.height {
-                cells_to_set.push((x, y, cell.state, org.id));
-            }
-        }
-    }
-    
-    // Now actually set the cells
-    for (x, y, state, org_id) in cells_to_set {
-        self.set_cell(x, y, state, Some(org_id));
-    }
-    
-    // Process reproduction
-    self.process_reproduction();
-    
-    // Remove dead organisms
-    self.remove_dead_organisms();
-}
-
-    /// Main step function to update the entire simulation
-    pub fn step(&mut self) {
-        // Update organisms
-        self.update_organisms();
-        
-        // Randomly produce food in empty cells
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let idx = (y * self.width + x) as usize;
-                
-                if self.cells[idx].state == CellState::Empty && random::<f32>() < self.food_production_prob {
-                    self.set_cell(x, y, CellState::Food, None);
-                }
-            }
-        }
-        
-        // Process producer cells
-        let mut new_food_positions = Vec::new();
-        
-        for org in &self.organisms {
-            if !org.is_alive {
-                continue;
-            }
-            
-            for cell in &org.cells {
-                if cell.state != CellState::Producer {
+                if cell.state != CellState::Mouth {
                     continue;
                 }
                 
@@ -545,57 +478,217 @@ fn update_organisms(&mut self) {
                     let nx = (cx as i32 + dx).max(0).min(self.width as i32 - 1) as u32;
                     let ny = (cy as i32 + dy).max(0).min(self.height as i32 - 1) as u32;
                     
-                    if let Some(cell) = self.get_cell(nx, ny) {
-                        if cell.state == CellState::Empty && random::<f32>() < 0.1 {
-                            new_food_positions.push((nx, ny));
-                        }
+                    // If there's food 
+                    if self.has_food_at(nx, ny) {
+                        food_eaten.push((nx, ny));
+                        org_food_collected.push(org_idx);
                     }
                 }
             }
         }
         
-        // Add new food
-        for (x, y) in new_food_positions {
-            self.set_cell(x, y, CellState::Food, None);
+        // Apply food collection to organisms
+        for org_idx in org_food_collected {
+            self.organisms[org_idx].food_collected += 1;
         }
         
-        // Update the pixels based on cell states
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let idx = (y * self.width + x) as usize;
-                self.pixels[idx] = self.cells[idx].state.to_color();
-            }
+        // Remove all eaten food
+        for (x, y) in food_eaten {
+            self.set_cell(x, y, CellState::Empty, None);
         }
     }
-    
-    /// Create an initial organism (the "origin of life")
-    pub fn origin_of_life(&mut self) {
-        let x = self.width / 2;
-        let y = self.height / 2;
-        self.create_basic_organism(x, y);
-    }
-    
-    /// Reset the grid to initial state
-    pub fn reset(&mut self, clear_walls: bool) {
-        // Clear all cells except walls if specified
-        for y in 0..self.height {
-            for x in 0..self.width {
+
+    // Fixed update_organisms method to resolve borrowing issues
+    fn update_organisms(&mut self) {
+        // Process eating
+        self.process_eating();
+        
+        // Process killer cells
+        self.process_killer_cells();
+        
+        // First clear all organisms from the grid
+        {
+            let mut cells_to_clear = Vec::new();
+            
+            for org in &self.organisms {
+                if !org.is_alive {
+                    continue;
+                }
+                
+                for cell in &org.cells {
+                    let (x, y) = org.get_cell_position(cell);
+                    if x < self.width && y < self.height {
+                        cells_to_clear.push((x, y, org.id));
+                    }
+                }
+            }
+            
+            // Clear cells
+            for (x, y, org_id) in cells_to_clear {
                 let idx = (y * self.width + x) as usize;
-                if clear_walls || self.cells[idx].state != CellState::Wall {
+                if self.cells[idx].owner == Some(org_id) {
                     self.cells[idx] = Cell { state: CellState::Empty, owner: None };
                 }
             }
         }
         
-        // Clear all organisms
-        self.organisms.clear();
+        // Update organisms
+        let mut updated_organisms = Vec::new();
+        let width = self.width;
+        let height = self.height;
         
-        // Reset organism ID counter
-        self.next_organism_id = 0;
-        
-        // Update pixels
-        for (idx, cell) in self.cells.iter().enumerate() {
-            self.pixels[idx] = cell.state.to_color();
+        for org in &self.organisms {
+            if !org.is_alive {
+                updated_organisms.push(org.clone());
+                continue;
+            }
+            
+            // Clone the organism for the update
+            let mut updated_org = org.clone();
+            
+            // Save the grid state for checking clear positions
+            let is_position_clear = |x: u32, y: u32| -> bool {
+                if x >= width || y >= height {
+                    return false;
+                }
+                let idx = (y * width + x) as usize;
+                let cell = &self.cells[idx];
+                cell.state == CellState::Empty || cell.state == CellState::Food
+            };
+            
+            let has_food_at = |x: u32, y: u32| -> bool {
+                if x >= width || y >= height {
+                    return false;
+                }
+                let idx = (y * width + x) as usize;
+                let cell = &self.cells[idx];
+                cell.state == CellState::Food
+            };
+            
+            // Update the organism with the closures
+            updated_org.update(width, height, is_position_clear, has_food_at);
+            
+            updated_organisms.push(updated_org);
         }
+        
+        // Replace the old organisms with the updated ones
+        self.organisms = updated_organisms;
+        
+        // Re-place all organisms on the grid
+        let mut cells_to_set = Vec::new();
+        for org in &self.organisms {
+            if !org.is_alive {
+                continue;
+            }
+            
+            for cell in &org.cells {
+                let (x, y) = org.get_cell_position(cell);
+                if x < self.width && y < self.height {
+                    cells_to_set.push((x, y, cell.state, org.id));
+                }
+            }
+        }
+        
+        // Now actually set the cells
+        for (x, y, state, org_id) in cells_to_set {
+            self.set_cell(x, y, state, Some(org_id));
+        }
+        
+        // Process reproduction
+        self.process_reproduction();
+        
+        // Remove dead organisms
+        self.remove_dead_organisms();
     }
-}
+
+        /// Main step function to update the entire simulation
+        pub fn step(&mut self) {
+            // Update organisms
+            self.update_organisms();
+            
+            // Randomly produce food in empty cells
+            for y in 0..self.height {
+                for x in 0..self.width {
+                    let idx = (y * self.width + x) as usize;
+                    
+                    if self.cells[idx].state == CellState::Empty && random::<f32>() < self.food_production_prob {
+                        self.set_cell(x, y, CellState::Food, None);
+                    }
+                }
+            }
+            
+            // Process producer cells
+            let mut new_food_positions = Vec::new();
+            
+            for org in &self.organisms {
+                if !org.is_alive {
+                    continue;
+                }
+                
+                for cell in &org.cells {
+                    if cell.state != CellState::Producer {
+                        continue;
+                    }
+                    
+                    let (cx, cy) = org.get_cell_position(cell);
+                    let adjacents = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+                    
+                    for (dx, dy) in adjacents.iter() {
+                        let nx = (cx as i32 + dx).max(0).min(self.width as i32 - 1) as u32;
+                        let ny = (cy as i32 + dy).max(0).min(self.height as i32 - 1) as u32;
+                        
+                        if let Some(cell) = self.get_cell(nx, ny) {
+                            if cell.state == CellState::Empty && random::<f32>() < 0.1 {
+                                new_food_positions.push((nx, ny));
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Add new food
+            for (x, y) in new_food_positions {
+                self.set_cell(x, y, CellState::Food, None);
+            }
+            
+            // Update the pixels based on cell states
+            for y in 0..self.height {
+                for x in 0..self.width {
+                    let idx = (y * self.width + x) as usize;
+                    self.pixels[idx] = self.cells[idx].state.to_color();
+                }
+            }
+        }
+        
+        /// Create an initial organism (the "origin of life")
+        pub fn origin_of_life(&mut self) {
+            let x = self.width / 2;
+            let y = self.height / 2;
+            self.create_basic_organism(x, y);
+        }
+        
+        /// Reset the grid to initial state
+        pub fn reset(&mut self, clear_walls: bool) {
+            // Clear all cells except walls if specified
+            for y in 0..self.height {
+                for x in 0..self.width {
+                    let idx = (y * self.width + x) as usize;
+                    if clear_walls || self.cells[idx].state != CellState::Wall {
+                        self.cells[idx] = Cell { state: CellState::Empty, owner: None };
+                    }
+                }
+            }
+            
+            // Clear all organisms
+            self.organisms.clear();
+            
+            // Reset organism ID counter
+            self.next_organism_id = 0;
+            
+            // Update pixels
+            for (idx, cell) in self.cells.iter().enumerate() {
+                self.pixels[idx] = cell.state.to_color();
+            }
+        }
+        // ... other methods ...
+    }
