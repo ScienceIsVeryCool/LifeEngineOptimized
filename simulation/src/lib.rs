@@ -73,6 +73,7 @@ pub struct Grid {
     pub max_organisms: usize,      // Maximum number of organisms allowed
     pub lifespan_multiplier: u32,  // Multiplier for organism lifespan
     pub insta_kill: bool,          // Whether organisms die instantly when hit by a killer
+    pub food_blocks_reproduction: bool,  // Add this field
 }
 
 impl Grid {
@@ -88,9 +89,14 @@ impl Grid {
             max_organisms: 1000,       // Default max organisms
             lifespan_multiplier: 100,  // Default lifespan multiplier
             insta_kill: false,         // Default to not insta-kill
+            food_blocks_reproduction: true, // Default to food blocking reproduction
+
         }
     }
-
+    // Add a setter method
+    pub fn set_food_blocks_reproduction(&mut self, blocks: bool) {
+        self.food_blocks_reproduction = blocks;
+    }
     /// Set the color of a specific pixel.
     /// Color is a 24-bit value in the form 0xRRGGBB.
     pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) {
@@ -185,19 +191,22 @@ impl Grid {
                 return false;
             }
             
-            // Check cell availability (must be empty or food to be considered clear)
+            // Check cell availability
             let idx = (y * self.width + x) as usize;
             let grid_cell = &self.cells[idx];
             
-            if !(grid_cell.state == CellState::Empty || grid_cell.state == CellState::Food) {
+            // Apply food_blocks_reproduction rule
+            if grid_cell.state == CellState::Food && !self.food_blocks_reproduction {
+                // Food doesn't block reproduction if the setting is false
+                continue;
+            }
+            
+            if grid_cell.state != CellState::Empty && grid_cell.state != CellState::Food {
                 return false;
             }
         }
         
-        // Check if there's a straight path from parent to offspring
-        // (Note: this would need the parent reference, which would be more complex)
-        
-        true
+        return true;
     }
     /// Create a new basic organism at a position
     pub fn create_basic_organism(&mut self, x: u32, y: u32) -> bool {
@@ -327,36 +336,63 @@ impl Grid {
     // Fix for process_reproduction function
     // Updated process_reproduction function to avoid borrowing conflict
     fn is_straight_path_clear(&self, x1: u32, y1: u32, x2: u32, y2: u32) -> bool {
-        // Check if the points are in a straight line (horizontally or vertically)
-        if x1 == x2 {
-            // Vertical line
-            let start_y = y1.min(y2);
-            let end_y = y1.max(y2);
-            
-            for y in start_y..=end_y {
-                if !self.is_position_clear(x1, y) {
-                    return false;
-                }
-            }
+        // If the points are the same, path is clear
+        if x1 == x2 && y1 == y2 {
             return true;
-        } else if y1 == y2 {
-            // Horizontal line
-            let start_x = x1.min(x2);
-            let end_x = x1.max(x2);
-            
-            for x in start_x..=end_x {
-                if !self.is_position_clear(x, y1) {
-                    return false;
-                }
-            }
-            return true;
-        } else {
-            // Not a straight line, so we'll consider it blocked
-            return false;
         }
+    
+        // Allow diagonal paths by using Bresenham's line algorithm
+        let dx = (x2 as i32 - x1 as i32).abs();
+        let dy = (y2 as i32 - y1 as i32).abs();
+        let sx = if x1 < x2 { 1 } else { -1 };
+        let sy = if y1 < y2 { 1 } else { -1 };
+        
+        let mut err = dx - dy;
+        let mut x = x1 as i32;
+        let mut y = y1 as i32;
+        
+        while x != x2 as i32 || y != y2 as i32 {
+            // Skip checking the start and end positions
+            if (x != x1 as i32 || y != y1 as i32) && (x != x2 as i32 || y != y2 as i32) {
+                if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
+                    return false;  // Out of bounds
+                }
+                
+                if !self.is_position_clear(x as u32, y as u32) {
+                    return false;  // Path blocked
+                }
+            }
+            
+            let e2 = 2 * err;
+            if e2 > -dy {
+                err -= dy;
+                x += sx;
+            }
+            if e2 < dx {
+                err += dx;
+                y += sy;
+            }
+        }
+        
+        return true;  // Path is clear
     }
 
-
+    // Also add this debug function to help diagnose reproduction issues
+    pub fn debug_reproduction(&self) {
+        println!("--- Reproduction Debug Info ---");
+        println!("Total organisms: {}", self.organisms.len());
+        
+        for (i, org) in self.organisms.iter().enumerate() {
+            println!(
+                "Organism {}: food={}/{}, cells={}, alive={}",
+                i, 
+                org.food_collected, 
+                org.food_needed_to_reproduce(),
+                org.cells.len(),
+                org.is_alive
+            );
+        }
+    }
 
     fn process_reproduction(&mut self) {
         let mut new_organisms = Vec::new();
@@ -420,39 +456,39 @@ impl Grid {
     }
 
     fn get_alternative_positions(&self, organism: &Organism) -> Vec<(u32, u32)> {
-    let mut positions = Vec::new();
-    let base_x = organism.x;
-    let base_y = organism.y;
-    
-    // Try different offsets in a spiral pattern
-    for distance in 1..10 {
-        // Cast distance to i32 for the ranges
-        let distance_i32 = distance as i32;
+        let mut positions = Vec::new();
+        let base_x = organism.x;
+        let base_y = organism.y;
         
-        // Use explicit i32 type for dx and dy
-        for dx in (-distance_i32)..=distance_i32 {
-            for dy in (-distance_i32)..=distance_i32 {
-                // Only consider the "shell" at this distance
-                if dx.abs() == distance_i32 || dy.abs() == distance_i32 {
-                    let new_x = (base_x as i32 + dx).max(0) as u32;
-                    let new_y = (base_y as i32 + dy).max(0) as u32;
-                    
-                    // Don't add positions outside grid bounds
-                    if new_x < self.width && new_y < self.height {
-                        positions.push((new_x, new_y));
+        // Try different offsets in a more comprehensive pattern
+        for distance in 1..15 {  // Try a larger range of distances
+            // Cast distance to i32 for the ranges
+            let distance_i32 = distance as i32;
+            
+            // Try more directions at each distance
+            for dx in -distance_i32..=distance_i32 {
+                for dy in -distance_i32..=distance_i32 {
+                    // Only consider positions on the "shell" at this distance
+                    if dx.abs() == distance_i32 || dy.abs() == distance_i32 {
+                        let new_x = (base_x as i32 + dx).max(0) as u32;
+                        let new_y = (base_y as i32 + dy).max(0) as u32;
+                        
+                        // Don't add positions outside grid bounds
+                        if new_x < self.width && new_y < self.height {
+                            positions.push((new_x, new_y));
+                        }
                     }
                 }
             }
+            
+            // If we have enough positions, stop
+            if positions.len() >= 40 {  // Try more positions
+                break;
+            }
         }
         
-        // If we have enough positions, stop
-        if positions.len() >= 20 {
-            break;
-        }
+        positions
     }
-    
-    positions
-}
         
     // Function with fixed borrowing in process_eating method 
     fn process_eating(&mut self) {

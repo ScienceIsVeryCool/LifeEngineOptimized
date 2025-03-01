@@ -232,22 +232,26 @@ impl Organism {
             // Reduce the food collected
             self.food_collected -= self.food_needed_to_reproduce();
             
-            // Determine where the offspring should go
+            // Try more directions including diagonals
             let directions = [
-                Direction::Up,
-                Direction::Right, 
-                Direction::Down, 
-                Direction::Left
+                (0, -1),  // Up
+                (1, 0),   // Right
+                (0, 1),   // Down
+                (-1, 0),  // Left
+                (1, -1),  // Up-Right
+                (1, 1),   // Down-Right
+                (-1, 1),  // Down-Left
+                (-1, -1)  // Up-Left
             ];
             
             // Try each direction to find a suitable spot
-            for &direction in &directions {
-                let (dx, dy) = direction.to_delta();
+            for &(dx, dy) in &directions {
                 let birth_distance = self.calculate_birth_distance();
                 
                 // Calculate potential position with some randomness
-                let offset_x = dx * (birth_distance + rand::thread_rng().gen_range(1..4));
-                let offset_y = dy * (birth_distance + rand::thread_rng().gen_range(1..4));
+                let rand_offset = rand::thread_rng().gen_range(1..4);
+                let offset_x = dx * (birth_distance + rand_offset);
+                let offset_y = dy * (birth_distance + rand_offset);
                 
                 let new_x = (self.x as i32 + offset_x).max(0) as u32;
                 let new_y = (self.y as i32 + offset_y).max(0) as u32;

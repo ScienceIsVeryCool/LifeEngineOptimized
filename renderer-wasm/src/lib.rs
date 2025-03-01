@@ -30,7 +30,10 @@ impl WasmGrid {
             inner: CoreGrid::new(width, height),
         }
     }
-
+    // Add this method
+    pub fn set_food_blocks_reproduction(&mut self, blocks: bool) {
+        self.inner.food_blocks_reproduction = blocks;
+    }
     /// Sets a pixel in the grid.
     pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) {
         self.inner.set_pixel(x, y, color);

@@ -240,7 +240,14 @@
             <label>
               <input type="checkbox" id="insta-kill"> One-touch kill
             </label>
+
           </div>
+          <div class="form-row">
+            <label>
+              <input type="checkbox" id="food-blocks" checked> Food Blocks Reproduction
+            </label>
+          </div>
+
         </div>
       </div>
     </div>
@@ -422,6 +429,7 @@
         });
       });
       
+
       // Cell type selection
       document.querySelectorAll('.cell-button').forEach(button => {
         button.addEventListener('click', () => {
@@ -478,11 +486,17 @@
         grid.set_lifespan_multiplier(multiplier);
         document.getElementById('lifespan-multiplier-value').textContent = multiplier + 'x';
       });
-      
+
       // Insta-kill checkbox
       const instaKillCheckbox = document.getElementById('insta-kill');
       instaKillCheckbox.addEventListener('change', () => {
         grid.set_insta_kill(instaKillCheckbox.checked);
+      });
+
+      // Insta-kill checkbox
+      const foodBlocksReproductionCheckbox = document.getElementById('food-blocks');
+      foodBlocksReproductionCheckbox.addEventListener('change', () => {
+        grid.set_food_blocks_reproduction(foodBlocksReproductionCheckbox.checked);
       });
       
       // Simulation speed
