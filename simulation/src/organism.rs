@@ -1,6 +1,7 @@
 // simulation/src/organism.rs
 
 use rand::Rng;
+use rand::seq::SliceRandom; // Add this import
 
 use crate::CellState;
 
@@ -226,38 +227,68 @@ impl Organism {
     }
     
     /// Try to reproduce (returns a new organism if successful)
-    /// Try to reproduce (returns a new organism if successful)
     pub fn try_reproduce(&mut self) -> Option<Organism> {
         if self.food_collected >= self.food_needed_to_reproduce() {
             // Reduce the food collected
             self.food_collected -= self.food_needed_to_reproduce();
             
-            // Try more directions including diagonals
+            // Try more directions including diagonals with more sophisticated positioning
             let directions = [
-                (0, -1),  // Up
-                (1, 0),   // Right
-                (0, 1),   // Down
-                (-1, 0),  // Left
-                (1, -1),  // Up-Right
-                (1, 1),   // Down-Right
-                (-1, 1),  // Down-Left
-                (-1, -1)  // Up-Left
+                (0, -1),   // Up
+                (1, 0),    // Right
+                (0, 1),    // Down
+                (-1, 0),   // Left
+                (1, -1),   // Up-Right
+                (1, 1),    // Down-Right
+                (-1, 1),   // Down-Left
+                (-1, -1)   // Up-Left
             ];
             
+            let mut rng = rand::thread_rng();
+            
+            // Randomize direction order manually
+            let mut randomized_directions = directions.to_vec();
+            for i in 0..randomized_directions.len() {
+                let swap_idx = rng.gen_range(0..randomized_directions.len());
+                randomized_directions.swap(i, swap_idx);
+            }
+            
             // Try each direction to find a suitable spot
-            for &(dx, dy) in &directions {
+            for &(dx, dy) in &randomized_directions {
                 let birth_distance = self.calculate_birth_distance();
                 
-                // Calculate potential position with some randomness
-                let rand_offset = rand::thread_rng().gen_range(1..4);
-                let offset_x = dx * (birth_distance + rand_offset);
-                let offset_y = dy * (birth_distance + rand_offset);
+                // More sophisticated distance calculation with randomness
+                let rand_scale = rng.gen_range(1.0..1.5); // Variable scaling factor
+                let offset_x = (dx as f32 * birth_distance as f32 * rand_scale).round() as i32;
+                let offset_y = (dy as f32 * birth_distance as f32 * rand_scale).round() as i32;
                 
                 let new_x = (self.x as i32 + offset_x).max(0) as u32;
                 let new_y = (self.y as i32 + offset_y).max(0) as u32;
                 
                 // Create offspring at this position
                 let mut offspring = Organism::new_from_parent(0, new_x, new_y, self);
+                
+                // Optionally adjust offspring rotation based on parent's movement
+                if rng.gen_bool(0.5) {
+                    // Option 1: Inherit parent's current rotation
+                    offspring.rotation = self.rotation;
+                } else if rng.gen_bool(0.5) {
+                    // Option 2: Rotate towards the birth direction
+                    offspring.rotation = match (dx, dy) {
+                        (0, -1) => Direction::Up,
+                        (1, 0) => Direction::Right,
+                        (0, 1) => Direction::Down,
+                        (-1, 0) => Direction::Left,
+                        (1, -1) => Direction::Up,   // Bias towards Up for diagonal
+                        (1, 1) => Direction::Down,  // Bias towards Down for diagonal
+                        (-1, 1) => Direction::Down, // Bias towards Down for diagonal
+                        (-1, -1) => Direction::Up,  // Bias towards Up for diagonal
+                        _ => Direction::random(),
+                    };
+                } else {
+                    // Option 3: Completely random rotation
+                    offspring.rotation = Direction::random();
+                }
                 
                 // Return the offspring - position checking will be done at grid level
                 return Some(offspring);
