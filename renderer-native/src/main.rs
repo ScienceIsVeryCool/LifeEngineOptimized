@@ -1,7 +1,7 @@
 // renderer-native/src/main.rs
 
 use pixels::{Error, Pixels, SurfaceTexture};
-use simulation::{Grid, CellState};
+use simulation::{Grid, CellStates};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},

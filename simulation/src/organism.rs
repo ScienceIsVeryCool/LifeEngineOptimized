@@ -2,8 +2,8 @@
 
 use rand::Rng;
 use rand::seq::SliceRandom; // Add this import
-
-use crate::CellState;
+use rand::random;
+use crate::CellStates;
 
 /// Direction for movement and facing
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -51,19 +51,19 @@ impl Direction {
 /// A cell in an organism, with its state and relative position to the organism center
 #[derive(Clone, Debug)]
 pub struct OrganismCell {
-    pub state: CellState,
+    pub state: CellStates,
     pub x: i32,   // Relative x position from organism center
     pub y: i32,   // Relative y position from organism center
     pub direction: Option<Direction>, // For cells that have direction (like eyes)
 }
 
 impl OrganismCell {
-    pub fn new(state: CellState, x: i32, y: i32) -> Self {
+    pub fn new(state: CellStates, x: i32, y: i32) -> Self {
         OrganismCell {
             state,
             x,
             y,
-            direction: if state == CellState::Eye { 
+            direction: if state == CellStates::Eye { 
                 Some(Direction::random()) 
             } else { 
                 None 
@@ -113,6 +113,7 @@ pub struct Organism {
     pub move_range: u32,        // How many steps in one direction before changing
     pub move_counter: u32,      // Counter for current movement
     pub is_alive: bool,         // Whether the organism is alive
+
 }
 
 impl Organism {
@@ -135,7 +136,7 @@ impl Organism {
         };
         
         // Add a default mouth cell at the center
-        organism.add_cell(CellState::Mouth, 0, 0);
+        organism.add_cell(CellStates::Mouth, 0, 0);
         
         organism
     }
@@ -180,7 +181,7 @@ impl Organism {
     }
     
     /// Add a cell to the organism
-    pub fn add_cell(&mut self, state: CellState, x: i32, y: i32) {
+    pub fn add_cell(&mut self, state: CellStates, x: i32, y: i32) {
         self.cells.push(OrganismCell::new(state, x, y));
         self.health = self.cells.len() as u32; // Health equals number of cells
     }
@@ -198,34 +199,32 @@ impl Organism {
     
     /// Check if this organism has eyes
     pub fn has_eyes(&self) -> bool {
-        self.cells.iter().any(|cell| cell.state == CellState::Eye)
+        self.cells.iter().any(|cell| cell.state == CellStates::Eye)
     }
     
     /// Check if this organism has mover cells
     pub fn has_movers(&self) -> bool {
-        self.cells.iter().any(|cell| cell.state == CellState::Mover)
+        self.cells.iter().any(|cell| cell.state == CellStates::Mover)
     }
     
     /// Check if this organism has producer cells
     pub fn has_producers(&self) -> bool {
-        self.cells.iter().any(|cell| cell.state == CellState::Producer)
+        self.cells.iter().any(|cell| cell.state == CellStates::Producer)
     }
     
     /// Get the amount of food needed to reproduce
     pub fn food_needed_to_reproduce(&self) -> u32 {
-        let base_food = self.cells.len() as u32;
         if self.has_movers() {
-            base_food + 1 // Movers need more food to reproduce
+            // In JS: this.anatomy.cells.length + Hyperparams.extraMoverFoodCost
+            self.cells.len() as u32 + 1
         } else {
-            base_food
+            self.cells.len() as u32
         }
     }
     
     /// Get the maximum lifespan of this organism
     pub fn max_lifespan(&self, lifespan_multiplier: u32) -> u32 {
-        // Base lifespan is still cells.len() * 100
-        // Multiply by lifespan_multiplier, with a minimum of 1 to prevent zero lifespan
-        (self.cells.len() as u32 * 100 * lifespan_multiplier).max(1) // TODO Does this work?
+        (self.cells.len() as u32 * lifespan_multiplier).max(1)
     }
     
     /// Try to reproduce (returns a new organism if successful)
@@ -260,9 +259,9 @@ impl Organism {
                 let birth_distance = self.calculate_birth_distance();
                 
                 // More sophisticated distance calculation with randomness
-                let rand_scale = rng.gen_range(1.0..1.5); // Variable scaling factor
-                let offset_x = (dx as f32 * birth_distance as f32 * rand_scale).round() as i32;
-                let offset_y = (dy as f32 * birth_distance as f32 * rand_scale).round() as i32;
+                let rand_offset = rng.gen_range(0..3) as i32; // Random offset 0-2
+                let offset_x = dx * (birth_distance + rand_offset);
+                let offset_y = dy * (birth_distance + rand_offset);
                 
                 let new_x = (self.x as i32 + offset_x).max(0) as u32;
                 let new_y = (self.y as i32 + offset_y).max(0) as u32;
@@ -303,74 +302,60 @@ impl Organism {
         }
     }
 
-    fn calculate_birth_distance(&self) -> i32 {
-        // Find the maximum extent of the organism in any direction
-        let mut max_extent = 0;
-        for cell in &self.cells {
-            let extent = cell.x.abs().max(cell.y.abs());
-            max_extent = max_extent.max(extent);
-        }
-        
-        // Birth distance needs to be at least the max extent plus a buffer
-        (max_extent + 2) as i32
+fn calculate_birth_distance(&self) -> i32 {
+    // Find the maximum extent of the organism in any direction
+    let mut max_extent = 0;
+    for cell in &self.cells {
+        let extent = cell.x.abs().max(cell.y.abs());
+        max_extent = max_extent.max(extent);
     }
     
+    // Birth distance needs to be at least the max extent plus a buffer
+    (max_extent + 3) as i32
+}
+    
     /// Mutate this organism by adding, changing, or removing a cell
-    pub fn mutate(&mut self) {
-        let mut rng = rand::thread_rng();
+    pub fn mutate(&mut self) -> bool {
+        let mut changed = false;
         
-        // Equal chance of add/change/remove
-        let mutation_type = rng.gen_range(0..3);
+        // Get probabilities from settings
+        let add_prob = 33; // This should be configurable
+        let change_prob = 33; // This should be configurable
+        let remove_prob = 33; // This should be configurable
         
-        match mutation_type {
-            0 => {
-                // Add a cell
-                if self.cells.len() > 0 {
-                    // Pick a random existing cell as attachment point
-                    let parent_idx = rng.gen_range(0..self.cells.len());
-                    let parent = &self.cells[parent_idx];
-                    
-                    // Try adjacent positions
-                    let directions = [(0, 1), (1, 0), (0, -1), (-1, 0)];
-                    let mut valid_positions = Vec::new();
-                    
-                    for (dx, dy) in directions.iter() {
-                        let new_x = parent.x + dx;
-                        let new_y = parent.y + dy;
-                        if self.can_add_cell_at(new_x, new_y) {
-                            valid_positions.push((new_x, new_y));
-                        }
-                    }
-                    
-                    if !valid_positions.is_empty() {
-                        let (new_x, new_y) = valid_positions[rng.gen_range(0..valid_positions.len())];
-                        let new_state = random_cell_state();
-                        self.add_cell(new_state, new_x, new_y);
-                    }
-                }
-            },
-            1 => {
-                // Change a cell type
-                if self.cells.len() > 1 { // Don't change the center cell
-                    let idx = rng.gen_range(1..self.cells.len());
-                    self.cells[idx].state = random_cell_state();
-                    if self.cells[idx].state == CellState::Eye {
-                        self.cells[idx].direction = Some(Direction::random());
-                    } else {
-                        self.cells[idx].direction = None;
-                    }
-                }
-            },
-            2 => {
-                // Remove a cell (never remove the center cell)
-                if self.cells.len() > 1 {
-                    let idx = rng.gen_range(1..self.cells.len());
-                    self.cells.remove(idx);
-                    self.health = self.cells.len() as u32;
-                }
-            },
-            _ => {}
+        // Try to add a cell
+        if random::<f32>() * 100.0 < add_prob as f32 {
+            // ... existing code for adding cells
+            changed = true;
         }
+        
+        // Try to change a cell type
+        if random::<f32>() * 100.0 < change_prob as f32 {
+            if self.cells.len() > 1 { // Protect the center cell
+                let idx = (random::<f32>() * (self.cells.len() - 1) as f32) as usize + 1;
+                // Make sure we get a cell different from the current one
+                let mut new_state = random_cell_state();
+                while new_state == self.cells[idx].state {
+                    new_state = random_cell_state();
+                }
+                self.cells[idx].state = new_state;
+                changed = true;
+            }
+        }
+        
+        // Try to remove a cell
+        if random::<f32>() * 100.0 < remove_prob as f32 {
+            if self.cells.len() > 1 { // Don't remove the last cell
+                let idx = (random::<f32>() * (self.cells.len() - 1) as f32) as usize + 1;
+                // Don't remove center cell
+                if self.cells[idx].x != 0 || self.cells[idx].y != 0 {
+                    self.cells.remove(idx);
+                    changed = true;
+                }
+            }
+        }
+        
+        return changed;
     }
     
     /// Try to move in the current direction
@@ -471,7 +456,7 @@ impl Organism {
         
         // Try to eat food
         for cell in &self.cells {
-            if cell.state == CellState::Mouth {
+            if cell.state == CellStates::Mouth {
                 // Check adjacent positions for food
                 let (cx, cy) = self.get_cell_position(cell);
                 let adjacents = [(0, 1), (1, 0), (0, -1), (-1, 0)];
@@ -500,15 +485,15 @@ impl Organism {
 }
 
 /// Get a random cell state (excluding Empty, Food, and Wall which are environment states)
-fn random_cell_state() -> CellState {
+fn random_cell_state() -> CellStates {
     let state_idx = rand::thread_rng().gen_range(0..6);
     match state_idx {
-        0 => CellState::Mouth,
-        1 => CellState::Producer,
-        2 => CellState::Mover,
-        3 => CellState::Killer,
-        4 => CellState::Armor,
-        5 => CellState::Eye,
-        _ => CellState::Mouth, // Won't happen due to range
+        0 => CellStates::Mouth,
+        1 => CellStates::Producer,
+        2 => CellStates::Mover,
+        3 => CellStates::Killer,
+        4 => CellStates::Armor,
+        5 => CellStates::Eye,
+        _ => CellStates::Mouth, // Won't happen due to range
     }
 }

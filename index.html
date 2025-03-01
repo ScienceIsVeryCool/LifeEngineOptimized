@@ -222,9 +222,14 @@
         <div class="control-group">
           <h3>Evolution Parameters</h3>
           <div class="form-row">
-            <label for="food-rate">Food Production Rate:</label>
-            <input type="range" id="food-rate" min="0" max="50" value="0">
-            <span id="food-rate-value">0.0%</span>
+            <label for="food-prod-rate">Producer Food Rate:</label>
+            <input type="range" id="food-prod-rate" min="0" max="50" value="5">
+            <span id="food-prod-rate-value">5.0%</span>
+          </div>
+          <div class="form-row">
+            <label for="food-drop-rate">Random Food Drop Rate:</label>
+            <input type="range" id="food-drop-rate" min="0" max="50" value="0">
+            <span id="food-drop-rate-value">0.0%</span>
           </div>
           <div class="form-row">
             <label for="max-organisms">Maximum Organisms:</label>
@@ -233,8 +238,8 @@
           </div>
           <div class="form-row">
             <label for="lifespan-multiplier">Lifespan Multiplier:</label>
-            <input type="range" id="lifespan-multiplier" min="1" max="50" value="1">
-            <span id="lifespan-multiplier-value">1x</span>
+            <input type="range" id="lifespan-multiplier" min="1" max="500" value="100">
+            <span id="lifespan-multiplier-value">100x</span>
           </div>
           <div class="form-row">
             <label>
@@ -394,9 +399,12 @@
       // Add event listeners
       setupEventListeners();
       
+      const foodProdRateSlider = document.getElementById('food-prod-rate');
+      const foodDropRateSlider = document.getElementById('food-drop-rate');
+
       // Set the initial food rate
-      const foodRate = parseFloat(document.getElementById('food-rate').value) / 1000;
-      grid.set_food_production_rate(foodRate);
+      grid.set_food_production_rate(parseInt(foodProdRateSlider.value));
+      grid.set_food_drop_rate(parseInt(foodDropRateSlider.value) / 1000);
       
       // Set maximum organisms
       grid.set_max_organisms(parseInt(document.getElementById('max-organisms').value));
@@ -463,12 +471,20 @@
       });
       
       // Evolution parameters
-      // Food production rate
-      const foodRateSlider = document.getElementById('food-rate');
-      foodRateSlider.addEventListener('input', () => {
-        const rate = parseInt(foodRateSlider.value) / 1000;
+      const foodProdRateSlider = document.getElementById('food-prod-rate');
+      const foodDropRateSlider = document.getElementById('food-drop-rate');
+      // Food production rate (for producer cells)
+      foodProdRateSlider.addEventListener('input', () => {
+        const rate = parseInt(foodProdRateSlider.value);
         grid.set_food_production_rate(rate);
-        document.getElementById('food-rate-value').textContent = (rate * 100).toFixed(1) + '%';
+        document.getElementById('food-prod-rate-value').textContent = rate.toFixed(1) + '%';
+      });
+
+      // Food drop rate (for random food generation)
+      foodDropRateSlider.addEventListener('input', () => {
+        const rate = parseInt(foodDropRateSlider.value) / 1000;
+        grid.set_food_drop_rate(rate);
+        document.getElementById('food-drop-rate-value').textContent = (rate * 100).toFixed(1) + '%';
       });
       
       // Maximum organisms

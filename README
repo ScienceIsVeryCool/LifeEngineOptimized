@@ -49,7 +49,7 @@ This document describes the implementation of the Life Engine simulation in Rust
 ## Project Structure
 
 - `simulation/`: Core simulation logic, independent of any rendering
-  - `lib.rs`: Defines the Grid, CellState, and other core types
+  - `lib.rs`: Defines the Grid, CellStates, and other core types
   - `organism.rs`: Organism implementation with cell composition and behaviors
   
 - `renderer-wasm/`: WebAssembly interface for browser rendering

@@ -25,7 +25,7 @@ pub fn initialize() {
 }
 /// Different types of cells in the simulation
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CellState {
+pub enum CellStates {
     Empty,
     Food,
     Wall,
@@ -37,19 +37,19 @@ pub enum CellState {
     Eye,
 }
 
-impl CellState {
+impl CellStates {
     /// Convert a cell state to a color representation
     pub fn to_color(&self) -> u32 {
         match self {
-            CellState::Empty => 0x0E1318,   // Dark blue
-            CellState::Food => 0x2F7AB7,    // Bluish
-            CellState::Wall => 0x808080,    // Gray
-            CellState::Mouth => 0xDEB14D,   // Orange
-            CellState::Producer => 0x15DE59, // Green
-            CellState::Mover => 0x60D4FF,   // Light blue
-            CellState::Killer => 0xF82380,  // Red
-            CellState::Armor => 0x7230DB,   // Purple
-            CellState::Eye => 0xB6C1EA,     // Light purple
+            CellStates::Empty => 0x0E1318,   // Dark blue
+            CellStates::Food => 0x2F7AB7,    // Bluish
+            CellStates::Wall => 0x808080,    // Gray
+            CellStates::Mouth => 0xDEB14D,   // Orange
+            CellStates::Producer => 0x15DE59, // Green
+            CellStates::Mover => 0x60D4FF,   // Light blue
+            CellStates::Killer => 0xF82380,  // Red
+            CellStates::Armor => 0x7230DB,   // Purple
+            CellStates::Eye => 0xB6C1EA,     // Light purple
         }
     }
 }
@@ -57,7 +57,7 @@ impl CellState {
 /// Cell in the grid, includes state and owner
 #[derive(Clone)]
 pub struct Cell {
-    pub state: CellState,
+    pub state: CellStates,
     pub owner: Option<usize>, // Index of the owning organism, if any
 }
 
@@ -67,13 +67,15 @@ pub struct Grid {
     pub height: u32,
     pub pixels: Vec<u32>,
     pub cells: Vec<Cell>,
-    pub food_production_prob: f32, // Probability of food production
+    pub food_production_prob: f32, // Probability for producer cells (0.0-1.0)
+    pub food_drop_prob: f32,       // Probability for random food generation (0.0-1.0)
     pub organisms: Vec<Organism>,  // All organisms in the simulation
     pub next_organism_id: usize,   // Next ID to assign to a new organism
     pub max_organisms: usize,      // Maximum number of organisms allowed
     pub lifespan_multiplier: u32,  // Multiplier for organism lifespan
     pub insta_kill: bool,          // Whether organisms die instantly when hit by a killer
     pub food_blocks_reproduction: bool,  // Add this field
+    pub movers_can_produce: bool, // Default to false
 
 }
 
@@ -83,16 +85,24 @@ impl Grid {
             width,
             height,
             pixels: vec![0; (width * height) as usize],
-            cells: vec![Cell { state: CellState::Empty, owner: None }; (width * height) as usize],
-            food_production_prob: 0.005, // 0.5% chance by default
+            cells: vec![Cell { state: CellStates::Empty, owner: None }; (width * height) as usize],
+            food_production_prob: 0.05, // 5% chance by default (matches JS default)
+            food_drop_prob: 0.0,        // 0% chance by default (no random food)
             organisms: Vec::new(),
             next_organism_id: 0,
             max_organisms: 1000,       // Default max organisms
             lifespan_multiplier: 100,  // Default lifespan multiplier
             insta_kill: false,         // Default to not insta-kill
             food_blocks_reproduction: true, // Default to food blocking reproduction
+            movers_can_produce: false,  // Default to false like in JS
+
 
         }
+    }
+
+    // Add a setter for the new parameter:
+    pub fn set_food_drop_rate(&mut self, rate: f32) {
+        self.food_drop_prob = rate;
     }
     // Add a setter method
     pub fn set_food_blocks_reproduction(&mut self, blocks: bool) {
@@ -117,7 +127,7 @@ impl Grid {
     }
 
     /// Set a cell's state and owner
-    pub fn set_cell(&mut self, x: u32, y: u32, state: CellState, owner: Option<usize>) {
+    pub fn set_cell(&mut self, x: u32, y: u32, state: CellStates, owner: Option<usize>) {
         if x < self.width && y < self.height {
             let idx = (y * self.width + x) as usize;
             self.cells[idx] = Cell { state, owner };
@@ -138,7 +148,7 @@ impl Grid {
     /// Check if a position is clear (empty or food)
     pub fn is_position_clear(&self, x: u32, y: u32) -> bool {
         if let Some(cell) = self.get_cell(x, y) {
-            cell.state == CellState::Empty || cell.state == CellState::Food
+            cell.state == CellStates::Empty || cell.state == CellStates::Food
         } else {
             false
         }
@@ -147,7 +157,7 @@ impl Grid {
     /// Check if a position has food
     pub fn has_food_at(&self, x: u32, y: u32) -> bool {
         if let Some(cell) = self.get_cell(x, y) {
-            cell.state == CellState::Food
+            cell.state == CellStates::Food
         } else {
             false
         }
@@ -196,15 +206,25 @@ impl Grid {
             let idx = (y * self.width + x) as usize;
             let grid_cell = &self.cells[idx];
             
-            // Apply food_blocks_reproduction rule
-            if grid_cell.state == CellState::Food && !self.food_blocks_reproduction {
-                // Food doesn't block reproduction if the setting is false
+            // Check if the cell is occupied by this organism
+            if let Some(owner_id) = grid_cell.owner {
+                if owner_id == organism.id {
+                    continue;
+                }
+            }
+            
+            // Check if the cell is empty
+            if grid_cell.state == CellStates::Empty {
                 continue;
             }
             
-            if grid_cell.state != CellState::Empty && grid_cell.state != CellState::Food {
-                return false;
+            // Check food blocks reproduction rule
+            if grid_cell.state == CellStates::Food && !self.food_blocks_reproduction {
+                continue;
             }
+            
+            // If we got here, the position is not clear
+            return false;
         }
         
         return true;
@@ -219,9 +239,9 @@ impl Grid {
         let mut organism = Organism::new(self.next_organism_id, x, y);
         
         // Add some basic cells to the organism object
-        organism.add_cell(CellState::Mouth, 0, 0); // Center
-        organism.add_cell(CellState::Producer, 1, 1); // Up Right
-        organism.add_cell(CellState::Producer, -1, -1); // Down Left
+        organism.add_cell(CellStates::Mouth, 0, 0); // Center
+        organism.add_cell(CellStates::Producer, 1, 1); // Up Right
+        organism.add_cell(CellStates::Producer, -1, -1); // Down Left
         
         // Add the organism to the grid
         self.add_organism(organism)
@@ -244,7 +264,7 @@ impl Grid {
             
             // Now turn those cells into food
             for (x, y) in cells_to_food {
-                self.set_cell(x, y, CellState::Food, None);
+                self.set_cell(x, y, CellStates::Food, None);
             }
             
             // Remove the organism
@@ -278,8 +298,8 @@ impl Grid {
                 let nidx = (ny as u32 * self.width + nx as u32) as usize;
                 
                 // Only produce food in empty cells with some probability
-                if self.cells[nidx].state == CellState::Empty && random::<f32>() < 0.1 {
-                    new_cells[nidx].state = CellState::Food;
+                if self.cells[nidx].state == CellStates::Empty && random::<f32>() < 0.1 {
+                    new_cells[nidx].state = CellStates::Food;
                 }
             }
         }
@@ -287,8 +307,9 @@ impl Grid {
     
     /// Process killer cells damaging other organisms
     fn process_killer_cells(&mut self) {
-        // Track which organisms take damage
+        // Track which organisms take damage and which killer cells hit another killer
         let mut damage_map: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
+        let mut killer_hit_map: std::collections::HashMap<usize, bool> = std::collections::HashMap::new();
         
         // Check each organism's killer cells
         for org in &self.organisms {
@@ -297,7 +318,7 @@ impl Grid {
             }
             
             for cell in &org.cells {
-                if cell.state != CellState::Killer {
+                if cell.state != CellStates::Killer {
                     continue;
                 }
                 
@@ -311,8 +332,14 @@ impl Grid {
                     if let Some(target_cell) = self.get_cell(nx, ny) {
                         // If cell belongs to another organism and is not armor
                         if let Some(target_id) = target_cell.owner {
-                            if target_id != org.id && target_cell.state != CellState::Armor {
+                            if target_id != org.id && target_cell.state != CellStates::Armor {
+                                // Track damage
                                 *damage_map.entry(target_id).or_insert(0) += 1;
+                                
+                                // Track if this killer hit another killer (for mutual kill)
+                                if target_cell.state == CellStates::Killer {
+                                    killer_hit_map.insert(org.id, true);
+                                }
                             }
                         }
                     }
@@ -329,6 +356,15 @@ impl Grid {
                     for _ in 0..damage {
                         self.organisms[index].harm();
                     }
+                }
+            }
+        }
+        
+        // Apply mutual killer damage if insta_kill is enabled
+        if self.insta_kill {
+            for (org_id, _) in killer_hit_map {
+                if let Some(index) = self.organisms.iter().position(|org| org.id == org_id) {
+                    self.organisms[index].harm();
                 }
             }
         }
@@ -504,7 +540,7 @@ impl Grid {
             }
             
             for cell in &org.cells {
-                if cell.state != CellState::Mouth {
+                if cell.state != CellStates::Mouth {
                     continue;
                 }
                 
@@ -519,6 +555,9 @@ impl Grid {
                     if self.has_food_at(nx, ny) {
                         food_eaten.push((nx, ny));
                         org_food_collected.push(org_idx);
+                        // Break after finding one piece of food to match JS behavior
+                        // This prevents a single mouth from collecting multiple food in one step
+                        break;
                     }
                 }
             }
@@ -531,9 +570,10 @@ impl Grid {
         
         // Remove all eaten food
         for (x, y) in food_eaten {
-            self.set_cell(x, y, CellState::Empty, None);
+            self.set_cell(x, y, CellStates::Empty, None);
         }
     }
+    
 
     // Fixed update_organisms method to resolve borrowing issues
     fn update_organisms(&mut self) {
@@ -564,7 +604,7 @@ impl Grid {
             for (x, y, org_id) in cells_to_clear {
                 let idx = (y * self.width + x) as usize;
                 if self.cells[idx].owner == Some(org_id) {
-                    self.cells[idx] = Cell { state: CellState::Empty, owner: None };
+                    self.cells[idx] = Cell { state: CellStates::Empty, owner: None };
                 }
             }
         }
@@ -590,7 +630,7 @@ impl Grid {
                 }
                 let idx = (y * width + x) as usize;
                 let cell = &self.cells[idx];
-                cell.state == CellState::Empty || cell.state == CellState::Food
+                cell.state == CellStates::Empty || cell.state == CellStates::Food
             };
             
             let has_food_at = |x: u32, y: u32| -> bool {
@@ -599,7 +639,7 @@ impl Grid {
                 }
                 let idx = (y * width + x) as usize;
                 let cell = &self.cells[idx];
-                cell.state == CellState::Food
+                cell.state == CellStates::Food
             };
             
             // Update the organism with the closures
@@ -643,27 +683,38 @@ impl Grid {
             // Update organisms
             self.update_organisms();
             
-            // Randomly produce food in empty cells
-            for y in 0..self.height {
-                for x in 0..self.width {
-                    let idx = (y * self.width + x) as usize;
-                    
-                    if self.cells[idx].state == CellState::Empty && random::<f32>() < self.food_production_prob {
-                        self.set_cell(x, y, CellState::Food, None);
+            // Randomly produce food in empty cells based on food_drop_prob
+            if self.food_drop_prob > 0.0 {
+                let total_cells = (self.width * self.height) as f32;
+                let food_to_generate = ((total_cells * self.food_drop_prob) / 50000.0).max(1.0) as u32;
+        
+                for _ in 0..food_to_generate {
+                    if random::<f32>() <= self.food_drop_prob {
+                        let x = (random::<f32>() * self.width as f32) as u32;
+                        let y = (random::<f32>() * self.height as f32) as u32;
+                        
+                        let idx = (y * self.width + x) as usize;
+                        if self.cells[idx].state == CellStates::Empty {
+                            self.set_cell(x, y, CellStates::Food, None);
+                        }
                     }
                 }
             }
             
-            // Process producer cells
             let mut new_food_positions = Vec::new();
-            
+    
             for org in &self.organisms {
                 if !org.is_alive {
                     continue;
                 }
                 
+                // Skip all producer cells in this organism if it has movers and movers_can_produce is false
+                if org.has_movers() && !self.movers_can_produce {
+                    continue;  // Skip all producer cells in this organism
+                }
+                
                 for cell in &org.cells {
-                    if cell.state != CellState::Producer {
+                    if cell.state != CellStates::Producer {
                         continue;
                     }
                     
@@ -675,18 +726,19 @@ impl Grid {
                         let ny = (cy as i32 + dy).max(0).min(self.height as i32 - 1) as u32;
                         
                         if let Some(cell) = self.get_cell(nx, ny) {
-                            if cell.state == CellState::Empty && random::<f32>() < 0.1 {
+                            // Use food_production_prob value (scale from 0-100 to 0-1)
+                            if cell.state == CellStates::Empty && random::<f32>() < (self.food_production_prob / 100.0) {
                                 new_food_positions.push((nx, ny));
                             }
                         }
                     }
                 }
             }
-            
-            // Add new food
-            for (x, y) in new_food_positions {
-                self.set_cell(x, y, CellState::Food, None);
-            }
+    
+    // Add new food
+    for (x, y) in new_food_positions {
+        self.set_cell(x, y, CellStates::Food, None);
+    }
             
             // Update the pixels based on cell states
             for y in 0..self.height {
@@ -710,8 +762,8 @@ impl Grid {
             for y in 0..self.height {
                 for x in 0..self.width {
                     let idx = (y * self.width + x) as usize;
-                    if clear_walls || self.cells[idx].state != CellState::Wall {
-                        self.cells[idx] = Cell { state: CellState::Empty, owner: None };
+                    if clear_walls || self.cells[idx].state != CellStates::Wall {
+                        self.cells[idx] = Cell { state: CellStates::Empty, owner: None };
                     }
                 }
             }

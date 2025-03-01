@@ -3,7 +3,7 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
-use simulation::{Grid as CoreGrid, CellState, Organism};
+use simulation::{Grid as CoreGrid, CellStates, Organism};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -38,20 +38,22 @@ impl WasmGrid {
     pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) {
         self.inner.set_pixel(x, y, color);
     }
-
+    pub fn set_movers_can_produce(&mut self, can_produce: bool) {
+        self.inner.movers_can_produce = can_produce;
+    }
     /// Sets a cell with a specific state
     pub fn set_cell(&mut self, x: u32, y: u32, state_idx: u8) {
         let state = match state_idx {
-            0 => CellState::Empty,
-            1 => CellState::Food,
-            2 => CellState::Wall,
-            3 => CellState::Mouth,
-            4 => CellState::Producer,
-            5 => CellState::Mover,
-            6 => CellState::Killer,
-            7 => CellState::Armor,
-            8 => CellState::Eye,
-            _ => CellState::Empty,
+            0 => CellStates::Empty,
+            1 => CellStates::Food,
+            2 => CellStates::Wall,
+            3 => CellStates::Mouth,
+            4 => CellStates::Producer,
+            5 => CellStates::Mover,
+            6 => CellStates::Killer,
+            7 => CellStates::Armor,
+            8 => CellStates::Eye,
+            _ => CellStates::Empty,
         };
         self.inner.set_cell(x, y, state, None);
     }
@@ -86,9 +88,14 @@ impl WasmGrid {
         self.inner.organisms.len()
     }
     
-    /// Set the food production probability
+    /// Set the food production probability for producer cells
     pub fn set_food_production_rate(&mut self, rate: f32) {
         self.inner.food_production_prob = rate;
+    }
+    
+    /// Set the random food drop probability
+    pub fn set_food_drop_rate(&mut self, rate: f32) {
+        self.inner.food_drop_prob = rate;
     }
     
     /// Set the maximum number of organisms
@@ -120,32 +127,32 @@ impl WasmGrid {
         match organism_type {
             // Basic producer
             0 => {
-                organism.add_cell(CellState::Mouth, 0, 0);
-                organism.add_cell(CellState::Producer, 1, 0);
-                organism.add_cell(CellState::Producer, -1, 0);
-                organism.add_cell(CellState::Producer, 0, 1);
-                organism.add_cell(CellState::Producer, 0, -1);
+                organism.add_cell(CellStates::Mouth, 0, 0);
+                organism.add_cell(CellStates::Producer, 1, 0);
+                organism.add_cell(CellStates::Producer, -1, 0);
+                organism.add_cell(CellStates::Producer, 0, 1);
+                organism.add_cell(CellStates::Producer, 0, -1);
             },
             // Mobile hunter
             1 => {
-                organism.add_cell(CellState::Mouth, 0, 0);
-                organism.add_cell(CellState::Mover, 1, 0);
-                organism.add_cell(CellState::Killer, 0, 1);
-                organism.add_cell(CellState::Eye, -1, 0);
+                organism.add_cell(CellStates::Mouth, 0, 0);
+                organism.add_cell(CellStates::Mover, 1, 0);
+                organism.add_cell(CellStates::Killer, 0, 1);
+                organism.add_cell(CellStates::Eye, -1, 0);
             },
             // Armored producer
             2 => {
-                organism.add_cell(CellState::Mouth, 0, 0);
-                organism.add_cell(CellState::Producer, 1, 0);
-                organism.add_cell(CellState::Producer, -1, 0);
-                organism.add_cell(CellState::Armor, 0, 1);
-                organism.add_cell(CellState::Armor, 0, -1);
+                organism.add_cell(CellStates::Mouth, 0, 0);
+                organism.add_cell(CellStates::Producer, 1, 0);
+                organism.add_cell(CellStates::Producer, -1, 0);
+                organism.add_cell(CellStates::Armor, 0, 1);
+                organism.add_cell(CellStates::Armor, 0, -1);
             },
             // Default to basic producer
             _ => {
-                organism.add_cell(CellState::Mouth, 0, 0);
-                organism.add_cell(CellState::Producer, 1, 0);
-                organism.add_cell(CellState::Producer, -1, 0);
+                organism.add_cell(CellStates::Mouth, 0, 0);
+                organism.add_cell(CellStates::Producer, 1, 0);
+                organism.add_cell(CellStates::Producer, -1, 0);
             }
         }
         
